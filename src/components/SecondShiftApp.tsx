@@ -14,7 +14,7 @@ import {
 } from "@/domain/session";
 import { deriveSignals } from "@/domain/signals";
 import type { ActionId, CounterfactualStance, SignalId, TranscriptSource } from "@/domain/types";
-import { speak } from "@/lib/voice/scribe-client";
+import { speak, stopSpeaking } from "@/lib/voice/tts-client";
 import { ExpertFlow, type SpeechStatus } from "./ExpertFlow";
 import { IncidentPanel, type SignalMark } from "./IncidentPanel";
 import { RulePanel } from "./RulePanel";
@@ -68,7 +68,6 @@ export function SecondShiftApp({ voiceConfigured }: { voiceConfigured: boolean }
   const [caseKey, setCaseKey] = useState<TraineeCase["key"]>("A");
   const [traineeChoice, setTraineeChoice] = useState<ActionId | null>(null);
   const [transferred, setTransferred] = useState(false);
-  const speechRun = useRef(0);
 
   const activeCase = TRAINEE_CASES.find((c) => c.key === caseKey) ?? TRAINEE_CASES[0];
   const traineeSignals = useMemo(() => deriveSignals(activeCase.incident), [activeCase]);
@@ -79,14 +78,13 @@ export function SecondShiftApp({ voiceConfigured }: { voiceConfigured: boolean }
   );
 
   function say(which: keyof Speech, text: string) {
-    const run = ++speechRun.current;
     if (!voiceConfigured) {
       setSpeech((p) => ({ ...p, [which]: "unavailable" }));
       return;
     }
     setSpeech((p) => ({ ...p, [which]: "speaking" }));
     void speak(text).then((result) => {
-      if (run === speechRun.current) setSpeech((p) => ({ ...p, [which]: result }));
+      setSpeech((p) => ({ ...p, [which]: result === "superseded" ? "idle" : result }));
     });
   }
 
@@ -94,6 +92,7 @@ export function SecondShiftApp({ voiceConfigured }: { voiceConfigured: boolean }
     const next = chooseAction(session, action);
     setSession(next);
     setSpeech({ why: "idle", cf: "idle" });
+    stopSpeaking();
     if (next.divergence) say("why", next.divergence.question);
   }
 
@@ -122,7 +121,7 @@ export function SecondShiftApp({ voiceConfigured }: { voiceConfigured: boolean }
   }
 
   function reset() {
-    speechRun.current++;
+    stopSpeaking();
     setMode("expert");
     setSession(startSession(EXPERT_INCIDENT));
     setSpeech({ why: "idle", cf: "idle" });
@@ -177,12 +176,12 @@ export function SecondShiftApp({ voiceConfigured }: { voiceConfigured: boolean }
   }
 
   return (
-    <div className="flex min-h-screen flex-col xl:h-screen xl:overflow-hidden">
+    <div className="flex min-h-screen flex-col lg:h-screen lg:overflow-hidden">
       <header className="shrink-0 border-b border-line bg-panel">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
           <div className="flex items-baseline gap-3">
             <span className="text-[15px] font-semibold tracking-tight text-text">SecondShift</span>
-            <span className="hidden text-[12px] text-muted lg:inline">
+            <span className="hidden text-[12px] text-muted 2xl:inline">
               Learns why the expert deviated from the runbook, then teaches it.
             </span>
           </div>
@@ -234,8 +233,11 @@ export function SecondShiftApp({ voiceConfigured }: { voiceConfigured: boolean }
         </div>
       </header>
 
-      <main className="grid flex-1 grid-cols-1 xl:min-h-0 xl:grid-cols-[320px_minmax(0,1fr)_390px]">
-        <aside className="pane border-b border-line bg-panel xl:overflow-y-auto xl:border-b-0 xl:border-r">
+      <main className="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[272px_minmax(0,1fr)_320px] xl:grid-cols-[300px_minmax(0,1fr)_370px] 2xl:grid-cols-[320px_minmax(0,1fr)_400px]">
+        <aside
+          key={mode === "expert" ? "expert" : caseKey}
+          className="pane border-b border-line bg-panel lg:overflow-y-auto lg:border-b-0 lg:border-r"
+        >
           {mode === "expert" ? (
             <IncidentPanel incident={EXPERT_INCIDENT} signals={session.signals} marks={expertMarks(session)} />
           ) : (
@@ -243,7 +245,7 @@ export function SecondShiftApp({ voiceConfigured }: { voiceConfigured: boolean }
           )}
         </aside>
 
-        <div className="pane xl:overflow-y-auto">
+        <div key={mode} className="pane @container lg:overflow-y-auto">
           {mode === "expert" ? (
             <ExpertFlow
               session={session}
@@ -299,7 +301,7 @@ export function SecondShiftApp({ voiceConfigured }: { voiceConfigured: boolean }
           )}
         </div>
 
-        <aside className="pane border-t border-line bg-panel xl:overflow-y-auto xl:border-l xl:border-t-0">
+        <aside key={mode} className="pane border-t border-line bg-panel lg:overflow-y-auto lg:border-l lg:border-t-0">
           {mode === "expert" || !rule ? (
             <RulePanel rule={rule} />
           ) : (

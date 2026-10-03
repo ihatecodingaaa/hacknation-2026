@@ -19,7 +19,7 @@ export function ErrorChart({ incident }: { incident: IncidentState }) {
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
-      className="block w-full"
+      className="block w-full max-w-[360px]"
       role="img"
       aria-label={`5xx error rate over the last ${n} minutes${incident.deploy ? `, deploy ${incident.deploy.version} marked` : ""}`}
     >

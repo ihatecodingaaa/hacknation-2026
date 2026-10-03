@@ -35,7 +35,7 @@ export function CaseTabs({
   onSelect: (k: TraineeCase["key"]) => void;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-1.5 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-1.5 @2xl:grid-cols-4">
       {cases.map((c) => (
         <button
           key={c.key}
@@ -90,7 +90,7 @@ export function TraineeFlow({
 
       <section>
         <Label className="mb-2">Trainee on call for {incident.id}: what do you do?</Label>
-        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-1.5 @xl:grid-cols-5">
           {ACTION_ORDER.map((id) => (
             <button
               key={id}
@@ -119,15 +119,15 @@ export function TraineeFlow({
             <p className="mt-1.5 text-[13px] leading-relaxed text-text">{evaluation.explanation}</p>
           </section>
 
-          <section className="grid grid-cols-3 border border-line">
-            <div className="border-r border-line px-3 py-2.5">
+          <section className="grid grid-cols-1 border border-line @lg:grid-cols-3">
+            <div className="border-b border-line px-3 py-2.5 @lg:border-b-0 @lg:border-r">
               <Label>Runbook says</Label>
               <div className="mt-1 text-[14px] font-semibold text-expected">{ACTIONS[runbook.action].label}</div>
               <div className="font-mono text-[10.5px] text-faint">
                 {runbook.step.id} · {runbook.step.when}
               </div>
             </div>
-            <div className="border-r border-line px-3 py-2.5">
+            <div className="border-b border-line px-3 py-2.5 @lg:border-b-0 @lg:border-r">
               <Label>Learned expert rule says</Label>
               <div
                 className={cx(
@@ -168,9 +168,9 @@ export function TraineeFlow({
             <table className="w-full text-[12px]">
               <thead>
                 <tr className="text-left font-mono text-[10px] uppercase tracking-wider text-faint">
-                  <th className="pb-1 font-normal">rule condition</th>
-                  <th className="pb-1 font-normal">{rule.sourceIncidentId} (expert)</th>
-                  <th className="pb-1 font-normal">{incident.id} (now)</th>
+                  <th className="pb-1 pr-2 font-normal">rule condition</th>
+                  <th className="pb-1 pr-2 font-normal">{rule.sourceIncidentId} (expert)</th>
+                  <th className="pb-1 pr-2 font-normal">{incident.id} (now)</th>
                   <th className="pb-1 text-right font-normal">here</th>
                 </tr>
               </thead>
@@ -265,6 +265,20 @@ export function ProvenancePanel({
         }
       >
         <RuleCard rule={{ ...rule, changedIds: [] }} />
+        <ul className="mt-3 space-y-1.5 border-t border-line pt-2.5">
+          {rule.guardrails.map((g) => (
+            <li
+              key={g.id}
+              className={cx(
+                "text-[12px] leading-snug",
+                evaluation?.match.firedGuardrail?.id === g.id ? "text-text" : "text-muted",
+              )}
+            >
+              <span className="mr-1 font-mono text-bad">✕</span>
+              {g.description}
+            </li>
+          ))}
+        </ul>
       </Section>
       <Section title="Confidence" className="border-b-0">
         <ConfidenceMeter rule={rule} />

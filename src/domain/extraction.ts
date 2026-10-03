@@ -25,6 +25,8 @@ interface Pattern {
 const DEPLOY = String.raw`(?:deploy(?:ment|ed)?|release[ds]?|rollout|push(?:ed)?|ship(?:ped)?)`;
 const NORMAL = String.raw`(?:normal|fine|flat|ok|okay|low|clean|healthy|stable|good)`;
 const IS = String.raw`(?:is|was|were|are|stayed|stays|remained|remains|looks?|looked|seems?|seemed)`;
+/** Optional version token: "after the v2.14 rollout". */
+const VERSION = String.raw`(?:v?\d[\w.]*\s+)?`;
 
 function p(signal: SignalId, claimed: "present" | "absent", source: string): Pattern {
   return { signal, claimed, re: new RegExp(source, "gi") };
@@ -47,8 +49,8 @@ const PATTERNS: Pattern[] = [
   p("db_degraded", "absent", String.raw`\bnot\s+(?:the\s+|a\s+)?(?:database|db)\b`),
 
   // Specific positive phrases.
-  p("deploy_preceded_failure", "present", String.raw`\b(?:right|just|immediately|straight|shortly|soon)\s+after\s+(?:the\s+|we\s+|our\s+|that\s+|this\s+)?(?:new\s+)?${DEPLOY}\b`),
-  p("deploy_preceded_failure", "present", String.raw`\b(?:since|after|with)\s+(?:the|this|that|our)\s+(?:new\s+)?${DEPLOY}\b`),
+  p("deploy_preceded_failure", "present", String.raw`\b(?:right|just|immediately|straight|shortly|soon)\s+after\s+(?:the\s+|we\s+|our\s+|that\s+|this\s+)?(?:new\s+)?${VERSION}${DEPLOY}\b`),
+  p("deploy_preceded_failure", "present", String.raw`\b(?:since|after|with)\s+(?:the|this|that|our)\s+(?:new\s+)?${VERSION}${DEPLOY}\b`),
   p("deploy_preceded_failure", "present", String.raw`\b${DEPLOY}\s+(?:caused|broke|triggered|introduced|started)\b`),
   p("deploy_preceded_failure", "present", String.raw`\b(?:line[sd]?\s+up|coincid\w*|correlat\w*|match(?:es|ed)?)\s+with\s+(?:the\s+)?${DEPLOY}\b`),
   p("new_version_only", "present", String.raw`\bonly\s+(?:on\s+|in\s+|affects?\s+|hitting\s+)?(?:the\s+)?(?:new|newer|newest|latest|canary|updated)\b(?:\s+(?:version|build|release|pods?|instances?|nodes?|hosts?|replicas?|code))?`),

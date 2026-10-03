@@ -35,7 +35,11 @@ export function VoiceAnswer({
   const [rec, setRec] = useState<RecState>("idle");
   const [level, setLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const holder = useRef<{ session: ScribeSession | null; lastLevel: number }>({ session: null, lastLevel: 0 });
+  const holder = useRef<{ session: ScribeSession | null; lastLevel: number; failed: boolean }>({
+    session: null,
+    lastLevel: 0,
+    failed: false,
+  });
 
   useEffect(() => {
     const h = holder.current;
@@ -47,6 +51,7 @@ export function VoiceAnswer({
     setText("");
     setPartial("");
     setRec("connecting");
+    holder.current.failed = false;
     try {
       const session = await ScribeSession.start({
         onTranscript: (full, live) => {
@@ -62,6 +67,7 @@ export function VoiceAnswer({
           }
         },
         onError: (message) => {
+          holder.current.failed = true;
           holder.current.session?.cancel();
           holder.current.session = null;
           setRec("idle");
@@ -69,6 +75,11 @@ export function VoiceAnswer({
           setError(message);
         },
       });
+      // The session can fail between opening and returning here.
+      if (holder.current.failed) {
+        session.cancel();
+        return;
+      }
       holder.current.session = session;
       setRec("recording");
     } catch (err) {
@@ -87,7 +98,7 @@ export function VoiceAnswer({
     setLevel(0);
     setPartial("");
     setText(final);
-    if (!final) setError("ElevenLabs returned no speech. Try again, or type the answer.");
+    if (!final) setError("ElevenLabs returned no speech");
   }
 
   function edit(value: string) {
@@ -149,7 +160,8 @@ export function VoiceAnswer({
 
       {error && (
         <div className="rounded-[3px] border border-bad/50 bg-bad/5 px-2 py-1.5 text-[12px] text-bad">
-          {error}. Type the answer or use the scripted one instead.
+          {error.replace(/\.$/, "")}
+          <div className="mt-0.5 text-[11.5px] text-muted">Live voice did not work. Type the answer or use the scripted one.</div>
         </div>
       )}
 

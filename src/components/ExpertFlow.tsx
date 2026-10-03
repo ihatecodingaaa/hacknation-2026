@@ -154,7 +154,7 @@ export function ExpertFlow({
   return (
     <div className="space-y-6 px-5 py-4">
       {/* 01 + 02: expected vs actual */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto_1fr]">
+      <div className="grid grid-cols-1 gap-4 @xl:grid-cols-[1fr_auto_1fr]">
         <Step n="01" title="Runbook expects">
           <div className="rounded-[3px] border border-expected/30 bg-raised px-3 py-2.5">
             <div className="text-[17px] font-semibold text-expected">{exp.label}</div>
@@ -171,7 +171,7 @@ export function ExpertFlow({
           </div>
         </Step>
 
-        <div className="hidden items-center md:flex">
+        <div className="hidden items-center @xl:flex">
           <span
             className={cx(
               "font-mono text-[22px] font-semibold",
@@ -272,10 +272,10 @@ export function ExpertFlow({
             <table className="mt-3 w-full text-[12px]">
               <thead>
                 <tr className="text-left font-mono text-[10px] uppercase tracking-wider text-faint">
-                  <th className="pb-1 font-normal">phrase</th>
-                  <th className="pb-1 font-normal">signal</th>
-                  <th className="pb-1 font-normal">expert says</th>
-                  <th className="pb-1 font-normal">telemetry</th>
+                  <th className="pb-1 pr-2 font-normal">phrase</th>
+                  <th className="pb-1 pr-2 font-normal">signal</th>
+                  <th className="pb-1 pr-2 font-normal">expert says</th>
+                  <th className="pb-1 pr-2 font-normal">telemetry</th>
                   <th className="pb-1 text-right font-normal">result</th>
                 </tr>
               </thead>
@@ -462,7 +462,7 @@ function ChangeAction({ expected, onChoose }: { expected: ActionId; onChoose: (a
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="font-mono text-[10.5px] text-faint underline-offset-2 hover:text-text hover:underline"
+        className="text-left font-mono text-[10.5px] text-faint underline-offset-2 hover:text-text hover:underline"
       >
         change action (resets what was learned)
       </button>

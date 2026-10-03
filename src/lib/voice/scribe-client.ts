@@ -45,7 +45,7 @@ export interface ScribeHandlers {
   onError: (message: string) => void;
 }
 
-function toBase64Pcm16(samples: Float32Array): string {
+export function toBase64Pcm16(samples: Float32Array): string {
   const bytes = new Uint8Array(samples.length * 2);
   const view = new DataView(bytes.buffer);
   for (let i = 0; i < samples.length; i++) {
@@ -60,7 +60,7 @@ function toBase64Pcm16(samples: Float32Array): string {
 }
 
 /** Box-filter resampler that keeps the fractional remainder between calls. */
-class Resampler {
+export class Resampler {
   private pending: number[] = [];
   constructor(private readonly ratio: number) {}
 
@@ -80,6 +80,23 @@ class Resampler {
   }
 }
 
+function waitForOpen(ws: WebSocket): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      ws.close();
+      reject(new Error("ElevenLabs connection timed out"));
+    }, 8_000);
+    ws.addEventListener("open", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    ws.addEventListener("close", () => {
+      clearTimeout(timer);
+      reject(new Error("Could not connect to ElevenLabs Scribe"));
+    });
+  });
+}
+
 async function fetchToken(): Promise<string> {
   const res = await fetch("/api/voice/scribe-token", { method: "POST" });
   const json = (await res.json().catch(() => ({}))) as { token?: string; error?: string };
@@ -94,6 +111,7 @@ export class ScribeSession {
   private partial = "";
   private buffer: number[] = [];
   private stopping = false;
+  private opened = false;
   private finalResolver: (() => void) | null = null;
 
   private constructor(
@@ -116,45 +134,39 @@ export class ScribeSession {
       throw new Error("Microphone permission was denied or no microphone is available");
     }
 
-    const params = new URLSearchParams({
-      model_id: "scribe_v2_realtime",
-      token,
-      audio_format: "pcm_16000",
-      commit_strategy: "vad",
-      language_code: "en",
-    });
-    const ws = new WebSocket(`${WS_URL}?${params}`);
-
+    let ctx: AudioContext | null = null;
     try {
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error("ElevenLabs connection timed out")), 8_000);
-        ws.onopen = () => {
-          clearTimeout(timer);
-          resolve();
-        };
-        ws.onerror = () => {
-          clearTimeout(timer);
-          reject(new Error("Could not connect to ElevenLabs Scribe"));
-        };
+      ctx = new AudioContext();
+      // Created after awaits, so some browsers start it suspended.
+      if (ctx.state === "suspended") await ctx.resume().catch(() => undefined);
+      const moduleUrl = URL.createObjectURL(new Blob([WORKLET_SOURCE], { type: "application/javascript" }));
+      await ctx.audioWorklet.addModule(moduleUrl);
+      URL.revokeObjectURL(moduleUrl);
+      const source = ctx.createMediaStreamSource(stream);
+      const node = new AudioWorkletNode(ctx, "pcm-tap");
+      const mute = ctx.createGain();
+      mute.gain.value = 0;
+      source.connect(node).connect(mute).connect(ctx.destination);
+
+      const params = new URLSearchParams({
+        model_id: "scribe_v2_realtime",
+        token,
+        audio_format: "pcm_16000",
+        commit_strategy: "vad",
+        language_code: "en",
       });
+      const ws = new WebSocket(`${WS_URL}?${params}`);
+      // Handlers go on before the socket opens: ElevenLabs reports auth
+      // problems as a message straight after open, then closes.
+      const session = new ScribeSession(ws, ctx, stream, node, handlers);
+      session.wire(new Resampler(ctx.sampleRate / TARGET_RATE));
+      await waitForOpen(ws);
+      return session;
     } catch (err) {
       stream.getTracks().forEach((t) => t.stop());
+      void ctx?.close().catch(() => undefined);
       throw err;
     }
-
-    const ctx = new AudioContext();
-    const moduleUrl = URL.createObjectURL(new Blob([WORKLET_SOURCE], { type: "application/javascript" }));
-    await ctx.audioWorklet.addModule(moduleUrl);
-    URL.revokeObjectURL(moduleUrl);
-    const source = ctx.createMediaStreamSource(stream);
-    const node = new AudioWorkletNode(ctx, "pcm-tap");
-    const mute = ctx.createGain();
-    mute.gain.value = 0;
-    source.connect(node).connect(mute).connect(ctx.destination);
-
-    const session = new ScribeSession(ws, ctx, stream, node, handlers);
-    session.wire(new Resampler(ctx.sampleRate / TARGET_RATE));
-    return session;
   }
 
   private wire(resampler: Resampler) {
@@ -180,14 +192,23 @@ export class ScribeSession {
           this.finalResolver?.();
           return;
         }
+        this.cancel();
         this.handlers.onError(`ElevenLabs ${type}: ${msg.error ?? "unknown error"}`);
       }
     };
+    this.ws.addEventListener("open", () => {
+      this.opened = true;
+    });
     this.ws.onclose = (event) => {
-      if (!this.stopping && event.code !== 1000) {
-        this.handlers.onError(`ElevenLabs connection closed (${event.code}${event.reason ? `: ${event.reason}` : ""})`);
-      }
       this.finalResolver?.();
+      // A close before open is reported by start(); a close we asked for is expected.
+      if (!this.opened || this.stopping) return;
+      this.cancel();
+      this.handlers.onError(
+        event.code === 1000
+          ? "ElevenLabs ended the session"
+          : `ElevenLabs connection closed (${event.code}${event.reason ? `: ${event.reason}` : ""})`,
+      );
     };
 
     this.node.port.onmessage = (event: MessageEvent<Float32Array>) => {
@@ -203,18 +224,20 @@ export class ScribeSession {
     };
   }
 
+  /** Send buffered audio. Audio captured before the socket opened is kept and sent in bounded chunks. */
   private flush(commit: boolean) {
     if (this.ws.readyState !== WebSocket.OPEN) return;
-    const samples = Float32Array.from(this.buffer);
-    this.buffer = [];
-    this.ws.send(
-      JSON.stringify({
-        message_type: "input_audio_chunk",
-        audio_base_64: toBase64Pcm16(samples),
-        commit,
-        sample_rate: TARGET_RATE,
-      }),
-    );
+    do {
+      const samples = Float32Array.from(this.buffer.splice(0, CHUNK_SAMPLES * 2));
+      this.ws.send(
+        JSON.stringify({
+          message_type: "input_audio_chunk",
+          audio_base_64: toBase64Pcm16(samples),
+          commit: commit && this.buffer.length === 0,
+          sample_rate: TARGET_RATE,
+        }),
+      );
+    } while (this.buffer.length > 0);
   }
 
   private emit() {
@@ -257,22 +280,3 @@ export class ScribeSession {
   }
 }
 
-/** Play a line through ElevenLabs TTS. Resolves to what actually happened. */
-export async function speak(text: string): Promise<"played" | "unavailable" | "failed"> {
-  try {
-    const res = await fetch("/api/voice/speak", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    if (res.status === 503) return "unavailable";
-    if (!res.ok) return "failed";
-    const url = URL.createObjectURL(await res.blob());
-    const audio = new Audio(url);
-    audio.onended = () => URL.revokeObjectURL(url);
-    await audio.play();
-    return "played";
-  } catch {
-    return "failed";
-  }
-}

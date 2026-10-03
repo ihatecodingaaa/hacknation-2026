@@ -50,6 +50,26 @@ describe("grounded extraction", () => {
     expect(x.rejectionQuote).toBe("Restarting would just restart the bad version.");
   });
 
+  it.each([
+    [
+      "5xx spiked right after the v2.14 rollout and the old pods are fine.",
+      ["error_spike", "deploy_preceded_failure", "new_version_only"],
+    ],
+    [
+      "It started just after we deployed, only the canary is throwing errors.",
+      ["deploy_preceded_failure", "new_version_only", "error_spike"],
+    ],
+    [
+      "Errors lined up with the deploy. Database is healthy, CPU is fine.",
+      ["error_spike", "deploy_preceded_failure", "db_degraded", "cpu_saturated"],
+    ],
+  ])("grounds spoken variants: %s", (text, expected) => {
+    const x = extractExplanation(text, signals, "restart_service");
+    expect(x.status).toBe("grounded");
+    expect(x.citations.map((c) => c.signal)).toEqual(expected);
+    expect(x.citations.every((c) => c.grounded)).toBe(true);
+  });
+
   it("refuses to learn from a vague answer", () => {
     const x = extractExplanation(SCRIPTED.vagueExplanation, signals, "restart_service");
     expect(x.status).toBe("ungrounded");
