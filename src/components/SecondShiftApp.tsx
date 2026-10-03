@@ -181,7 +181,7 @@ export function SecondShiftApp({ voiceConfigured }: { voiceConfigured: boolean }
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
           <div className="flex items-baseline gap-3">
             <span className="text-[15px] font-semibold tracking-tight text-text">SecondShift</span>
-            <span className="hidden text-[12px] text-muted 2xl:inline">
+            <span className="hidden text-[12px] text-muted xl:inline">
               Learns why the expert deviated from the runbook, then teaches it.
             </span>
           </div>
@@ -235,7 +235,7 @@ export function SecondShiftApp({ voiceConfigured }: { voiceConfigured: boolean }
 
       <main className="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[272px_minmax(0,1fr)_320px] xl:grid-cols-[300px_minmax(0,1fr)_370px] 2xl:grid-cols-[320px_minmax(0,1fr)_400px]">
         <aside
-          key={mode === "expert" ? "expert" : caseKey}
+          key={`incident-${mode === "expert" ? "expert" : caseKey}`}
           className="pane border-b border-line bg-panel lg:overflow-y-auto lg:border-b-0 lg:border-r"
         >
           {mode === "expert" ? (
@@ -245,7 +245,7 @@ export function SecondShiftApp({ voiceConfigured }: { voiceConfigured: boolean }
           )}
         </aside>
 
-        <div key={mode} className="pane @container lg:overflow-y-auto">
+        <div key={`flow-${mode}`} className="pane @container lg:overflow-y-auto">
           {mode === "expert" ? (
             <ExpertFlow
               session={session}
@@ -301,7 +301,7 @@ export function SecondShiftApp({ voiceConfigured }: { voiceConfigured: boolean }
           )}
         </div>
 
-        <aside key={mode} className="pane border-t border-line bg-panel lg:overflow-y-auto lg:border-l lg:border-t-0">
+        <aside key={`side-${mode}`} className="pane border-t border-line bg-panel lg:overflow-y-auto lg:border-l lg:border-t-0">
           {mode === "expert" || !rule ? (
             <RulePanel rule={rule} />
           ) : (
