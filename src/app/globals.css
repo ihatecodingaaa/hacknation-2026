@@ -1,26 +1,90 @@
 @import "tailwindcss";
 
+/*
+  Operational palette. Each accent has one meaning:
+  expected  = what the runbook says (neutral steel)
+  expert    = what the human actually did (blue)
+  diverge   = disagreement worth learning from (amber)
+  rule      = learned judgment (teal)
+  bad / ok  = trainee verdicts and abnormal signals
+  unknown   = missing evidence (muted yellow, always dashed)
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #0b0d10;
+  --panel: #101318;
+  --raised: #151920;
+  --line: #222831;
+  --line-strong: #2e3641;
+  --text: #e4e7eb;
+  --muted: #8d97a3;
+  --faint: #5d6772;
+  --expected: #a3adb9;
+  --expert: #5b9cf5;
+  --diverge: #f0a23b;
+  --rule: #3fc1a5;
+  --bad: #ef5d5d;
+  --ok: #5cc98a;
+  --unknown: #d6b84e;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-expected: var(--expected);
+  --color-expert: var(--expert);
+  --color-diverge: var(--diverge);
+  --color-rule: var(--rule);
+  --color-bad: var(--bad);
+  --color-ok: var(--ok);
+  --color-unknown: var(--unknown);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--rule) 35%, transparent);
+}
+
+/* Thin, quiet scrollbars for the column panes. */
+.pane {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+@keyframes recpulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.rec-dot {
+  animation: recpulse 1.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rec-dot {
+    animation: none;
+  }
 }
