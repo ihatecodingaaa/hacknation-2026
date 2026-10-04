@@ -1,4 +1,4 @@
-import { errorMessage, synthesize, voiceConfig } from "@/lib/voice/elevenlabs-server";
+import { errorMessage, isTransient, synthesize, voiceConfig } from "@/lib/voice/elevenlabs-server";
 
 const MAX_CHARS = 400;
 
@@ -29,6 +29,8 @@ export async function POST(request: Request) {
       headers: { "Content-Type": "audio/mpeg", "Cache-Control": "no-store" },
     });
   } catch (err) {
-    return Response.json({ error: errorMessage(err) }, { status: 502 });
+    // The server already retried transient failures once. `retryable` tells
+    // the browser whether trying again later could help.
+    return Response.json({ error: errorMessage(err), retryable: isTransient(err) }, { status: 502 });
   }
 }

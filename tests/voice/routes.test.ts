@@ -100,3 +100,75 @@ describe("with ELEVENLABS_API_KEY", () => {
     expect((await speakRoute(speakRequest({ text: "x".repeat(401) }))).status).toBe(400);
   });
 });
+
+describe("transient failure handling", () => {
+  it("retries a transient 5xx token failure once, then succeeds", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", KEY);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ detail: "upstream unavailable" }, { status: 502 }))
+      .mockResolvedValueOnce(Response.json({ token: "sutkn_retry" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await scribeToken();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ token: "sutkn_retry" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries at most once and reports the failure as retryable", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", KEY);
+    const fetchMock = vi.fn(async () => Response.json({ detail: "overloaded" }, { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await scribeToken();
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "ElevenLabs token request failed (503): overloaded", retryable: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry an auth failure", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", KEY);
+    const fetchMock = vi.fn(async () => Response.json({ detail: { message: "Invalid API key" } }, { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await scribeToken();
+    expect((await res.json()).retryable).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a rate limit", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", KEY);
+    const fetchMock = vi.fn(async () => Response.json({ detail: "rate limited" }, { status: 429 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await speakRoute(speakRequest({ text: "Why?" }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("never puts the key in an error body", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", KEY);
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ detail: "boom" }, { status: 500 })));
+    const text = await (await scribeToken()).text();
+    expect(text).not.toContain(KEY);
+  });
+});
+
+describe("browser token fetch", () => {
+  it("retries once when the request never reached the server", async () => {
+    const { fetchToken } = await import("@/lib/voice/scribe-client");
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(Response.json({ token: "sutkn_ok" }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await fetchToken(0)).toBe("sutkn_ok");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a structured server error (the server already retried)", async () => {
+    const { fetchToken } = await import("@/lib/voice/scribe-client");
+    const fetchMock = vi.fn(async () =>
+      Response.json({ error: "ElevenLabs token request failed (401): Invalid API key", retryable: false }, { status: 502 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(fetchToken(0)).rejects.toThrow("Invalid API key");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

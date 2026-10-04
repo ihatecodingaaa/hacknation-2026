@@ -97,13 +97,34 @@ function waitForOpen(ws: WebSocket): Promise<void> {
   });
 }
 
-async function fetchToken(): Promise<string> {
-  const res = await fetch("/api/voice/scribe-token", { method: "POST" });
-  const json = (await res.json().catch(() => ({}))) as { token?: string; error?: string };
-  if (!res.ok || !json.token) {
-    throw new Error(json.error ?? `Token request failed (${res.status})`);
+type TokenReply = { token?: string; error?: string; retryable?: boolean };
+
+/**
+ * Ask our server for a single-use Scribe token. The server already retries
+ * transient ElevenLabs failures once. Here we retry once only for failures the
+ * server could not handle itself: the request never reached it, or it crashed
+ * without a structured answer. Auth and configuration errors are shown as is.
+ */
+export async function fetchToken(retryDelayMs = 400): Promise<string> {
+  for (let attempt = 0; ; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch("/api/voice/scribe-token", { method: "POST" });
+    } catch {
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, retryDelayMs));
+        continue;
+      }
+      throw new Error("Could not reach the server for a voice token");
+    }
+    const json = (await res.json().catch(() => null)) as TokenReply | null;
+    if (res.ok && json?.token) return json.token;
+    if (attempt === 0 && res.status >= 500 && json === null) {
+      await new Promise((r) => setTimeout(r, retryDelayMs));
+      continue;
+    }
+    throw new Error(json?.error ?? `Token request failed (${res.status})`);
   }
-  return json.token;
 }
 
 export class ScribeSession {

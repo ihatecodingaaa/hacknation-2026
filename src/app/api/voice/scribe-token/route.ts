@@ -1,4 +1,4 @@
-import { createScribeToken, errorMessage, voiceConfig } from "@/lib/voice/elevenlabs-server";
+import { createScribeToken, errorMessage, isTransient, voiceConfig } from "@/lib/voice/elevenlabs-server";
 
 /** Single-use Scribe Realtime token. The browser never sees the API key. */
 export async function POST() {
@@ -13,6 +13,8 @@ export async function POST() {
     const token = await createScribeToken(config);
     return Response.json({ token }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
-    return Response.json({ error: errorMessage(err) }, { status: 502 });
+    // The server already retried transient failures once. `retryable` tells
+    // the browser whether trying again later could help.
+    return Response.json({ error: errorMessage(err), retryable: isTransient(err) }, { status: 502 });
   }
 }
