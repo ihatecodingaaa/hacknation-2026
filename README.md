@@ -22,8 +22,8 @@ That condition is the valuable part. It only shows up when the expert's action d
 2. **Surprise.** The expert's action differs. SecondShift names what the runbook ignored: deploy timing, version scope, latency.
 3. **Why.** It asks, out loud: *"You rolled back instead of restarting. What made you choose that?"* The expert answers by microphone; Scribe v2 Realtime transcribes it.
 4. **Verify.** Each claim in the answer is checked against telemetry. Supported claims become rule conditions. Contradicted, unverifiable or invented claims are shown and not learned.
-5. **Boundary.** It asks one counterfactual: *"If latency increased but the error rate stayed normal, would you still roll back?"* The answer ("No, I'd investigate first") moves the decision boundary. The Decision Boundary Map shows the cell change.
-6. **Transfer.** A trainee on a different incident (different service and numbers) chooses restart. SecondShift flags the mismatch and shows the expert's original words as the reason. On an incident where every version fails, it refuses to recommend rollback. Where per-version data is missing, it abstains.
+5. **Boundary.** It asks one counterfactual: *"If latency increased but the error rate stayed normal, would you still roll back?"* The answer ("No, I'd investigate first") is read into a draft that shows the transcript, the reading and the words it came from. Once the expert confirms it, the rule moves: the Decision Boundary Map shows the cell change from *Rule is silent* to *Hold and investigate*.
+6. **Transfer.** A trainee on a different incident (different service and numbers) chooses restart. SecondShift flags the mismatch and shows the expert's original words as the reason. On an incident where every version fails, the rule's scope condition does not hold, so it does not support rolling back. Where per-version data is missing, it abstains.
 7. **Memory.** The same judgment is exported as a versioned JSON artifact. An evaluator that reads only that file runs it on 14 seeded incidents against a runbook-only baseline.
 
 ## How it works
@@ -45,9 +45,11 @@ expert's voice ─► Scribe v2 Realtime ─► transcript (verbatim, tagged wit
                   2. names an observable signal   3. stated without hedging
                   4. the telemetry agrees
                                           ▼
-                 rule v1: only supported claims, plus derived guardrails
+                 rule v1: only supported claims; no guardrails yet
                                           ▼
           counterfactual chosen by code (cited signal vs uncited sibling), spoken by TTS
+                                          ▼
+          answer read into a draft; the expert confirms or corrects the reading
                                           ▼
            rule v2: condition marked boundary-tested, counterfactual guardrail added
                  │                      │                          │
@@ -70,7 +72,7 @@ expert's voice ─► Scribe v2 Realtime ─► transcript (verbatim, tagged wit
 | Semantic candidates + verification | `semantic.ts`, `speech.ts` | zod schema, quote tracing with disfluency tolerance, four gates. |
 | Phrase matcher | `extraction.ts` | Matches on a cleaned copy; every span maps back to the original words. |
 | Rule + evidence strength | `rules.ts` | Conditions carry the expert's quote and the version that introduced them. |
-| Counterfactual | `counterfactual.ts` | Picks a cited signal with an uncited sibling; "no" confirms it and adds a guardrail, "yes" broadens it. |
+| Counterfactual | `counterfactual.ts`, `session.ts` | Picks a cited signal with an uncited sibling. The answer is a draft until the expert confirms it; "no" plus an alternative confirms the condition and adds a guardrail scoped to what the question held constant, "yes" broadens it. A "no" without an alternative is never applied. |
 | Matching and grading | `evaluation.ts` | Guardrails first; unknown data never fires anything. |
 | Decision Boundary Map | `boundary.ts` | Each cell is `matchRule()` on a one-reason hypothetical. |
 | Decision memory | `memory.ts` | Schema-validated artifact plus an interpreter that reads only the JSON. |
@@ -91,7 +93,7 @@ The live Scribe and TTS path has been run with a real key and a real microphone:
 
 ## Decision Boundary Map
 
-Columns are the reasons the expert gave (rule conditions). Rows ask the rule engine what it recommends on the expert's own incident when that one reason **holds**, **stops being true**, or **cannot be measured**. Every cell is computed by running the real matcher on that hypothetical, not drawn by hand. After the counterfactual, the error-spike cell changes from *Rule is silent* to *Hold and investigate* and is marked *Moved in v2*. In the transfer step the trainee's incident is placed on the same axes, the deciding column is outlined, and a result line says where it landed and why. Selecting a column shows the expert's quote, the telemetry and the counterfactual behind it.
+Columns are the reasons the expert gave (rule conditions). Rows ask the rule engine what it recommends on the expert's own incident when that one reason **holds**, **stops being true**, or **cannot be measured**. Every cell is computed by running the real matcher on that hypothetical, not drawn by hand. Before any boundary is tested, a reason that stops being true leaves the rule *silent* (the runbook applies): rule v1 does not invent a policy for the opposite of what the expert said. After the confirmed counterfactual, the probed cell changes from *Rule is silent* to *Hold and investigate* and is marked *Moved in v2*. Whichever reason the counterfactual probes moves the same way (for example version scope: "If every version was failing"). In the transfer step the trainee's incident is placed on the same axes, the deciding column is outlined, and a result line says where it landed and why. Selecting a column shows the expert's quote, the telemetry and the counterfactual behind it.
 
 ## Benchmark (seeded)
 
@@ -105,7 +107,7 @@ The evaluator compares **runbook only** with **runbook + decision memory**, and 
 | + memory v1 (before the counterfactual) | 10 / 14 | 1 | 3 |
 | + memory v2 (after the counterfactual) | 11 / 14 | 1 | 2 |
 
-The counterfactual fixes BM-08 (latency up, errors flat, right after a deploy). The two remaining misses are honest: BM-06 is a bad deploy that fires 30 minutes later, outside the expert's stated timing, and BM-07 is an upstream outage where the right move is to investigate and the rule correctly stands down but the runbook's restart is still wrong. These numbers are computed in the app and pinned by a test; a different expert answer gives different numbers. They are fixtures, not production performance.
+The counterfactual fixes BM-08 (latency up, errors flat, right after a deploy). The two remaining misses are honest: BM-06 is a bad deploy that fires 30 minutes later, outside the expert's stated timing, and BM-07 is an upstream outage where the right move is to investigate; the rule correctly does not apply, but the runbook's restart is still wrong. If the expert names deploy timing and version scope only and the counterfactual probes version scope ("If the failures weren't isolated to the new version...", answered "No, I would investigate"), v2 reaches 12/14 because BM-07 then gets "investigate". These numbers are computed in the app and pinned by tests; a different expert answer gives different numbers. They are fixtures, not production performance.
 
 ## Decision memory
 
@@ -146,7 +148,7 @@ npm run setup:reasoning-agent       # creates a text-only agent, prints its id
 The microphone needs a secure context: `localhost` or HTTPS. Node 20.9+ runs the app; the test runner needs Node 22.12+.
 
 ```bash
-npm test          # 129 tests: domain, semantic verification, boundary, memory, benchmark, routes, retries
+npm test          # 144 tests: domain, semantic verification, counterfactual gate, boundary, memory, benchmark, routes, retries
 npm run lint
 npm run build
 ```
@@ -167,6 +169,7 @@ Story view walks through the six chapters in order: Before, Surprise, Why, Bound
 
 - The ElevenLabs Agents extractor has not been exercised against the live API. Its message shapes come from the official SDK source and are tested against a simulated socket. If it fails, the phrase matcher takes over and the UI shows why.
 - The phrase matcher covers a closed vocabulary of 7 signals. It fails safe (no rule, an explicit message) on reasons outside it.
+- The counterfactual answer is read by simple rules (a leading "no", "would still", action words). That is why live and typed answers always wait for the expert to confirm the reading.
 - One expert, one incident, one rule, one counterfactual. Evidence strength is capped accordingly.
 - No persistence: a refresh starts over. No real monitoring integration.
 - The benchmark is 14 hand-built fixtures that probe specific boundaries. It shows the mechanism works and where it fails; it says nothing about production accuracy.

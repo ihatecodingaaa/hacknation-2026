@@ -27,9 +27,11 @@ Line to open with, if you need one: *"The playbook tells you what usually works.
 
 - Click **Probe the boundary**. The map appears: three columns, one per reason. Rows show what the rule does if a reason holds, flips, or is missing. Every cell is computed by the rule engine.
 - ElevenLabs asks: *"If latency increased but the error rate stayed normal, would you still roll back?"*
-- Answer: *"No. I'd investigate first, latency alone isn't enough evidence the deploy caused it."* Click **Update the rule**. (Offline: **Use scripted answer**.)
+- Before answering, point at the flipped row: every reason that stops being true shows *Rule is silent*. Nothing is invented for the opposite of what the expert said.
+- Answer: *"No. I'd investigate first, latency alone isn't enough evidence the deploy caused it."* Click **Submit answer**. SecondShift shows what it heard, how it read it (*Would not roll back*, from "No"; *Instead: Hold and investigate*, from "investigate") and that nothing is applied yet. Click **Confirm interpretation**. (Offline: **Use scripted answer** applies directly and is labelled as scripted.)
+- If the transcript is misheard or names no alternative, the draft says so; pick the answer and the alternative, then confirm. **Correct it** reopens a confirmed reading.
 - Point at the error-rate column: **Moved in v2 · was: Rule is silent → Hold and investigate**. Evidence strength 0.65 → 0.85 (heuristic, capped: one incident).
-- Say: *"One question moved the boundary. Now the rule knows where it stops."*
+- Say: *"One confirmed answer moved the boundary. Now the rule knows where it stops."*
 
 ## 1:45 to 2:30 · 05 Transfer
 
@@ -37,7 +39,7 @@ Line to open with, if you need one: *"The playbook tells you what usually works.
 - Case **A** (payments-gateway): click **Restart service**. *Mismatch with the learned expert rule.* Runbook says restart, the expert's rule says roll back. The map shows INC-2057 landing inside the learned region. The provenance shows the expert's own words from INC-2041.
 - Case **C** (inventory-api): click **Roll back deployment**. *Crosses a boundary the expert set*; the deciding column is the counterfactual one.
 - Case **D** (missing per-version data): any choice gives *Cannot confirm: missing evidence*. Say: *"It knows what it doesn't know."*
-- Optional: case **B**, every version failing, rollback is blocked by a guardrail.
+- Optional: case **B**, every version failing. Rolling back is *not supported by the expert's rule*: the scope condition does not hold, so the rule is silent rather than inventing a policy.
 
 ## 2:30 to 3:00 · 06 Memory
 

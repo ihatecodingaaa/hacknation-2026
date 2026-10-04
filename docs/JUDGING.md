@@ -14,7 +14,8 @@ A language model may read the transcript and propose claims; it never creates a 
 
 **Learning a decision boundary, not a script.**
 - Divergence detection gates learning: if the expert follows the runbook, nothing is asked or learned (`src/domain/divergence.ts`).
-- Counterfactual selection is deterministic: a cited signal with an observed but uncited sibling of the same kind (`src/domain/counterfactual.ts`). "No" marks the condition as boundary-tested and adds a guardrail with the expert's alternative; "yes" broadens the condition.
+- Counterfactual selection is deterministic: a cited signal with an observed but uncited sibling of the same kind (`src/domain/counterfactual.ts`). The answer is read into a draft (stance, alternative, and the words each came from); live and typed answers change the rule only after the expert confirms (`confirmCounterfactual`, `src/domain/session.ts`). "No" marks the condition as boundary-tested and adds a guardrail with the expert's alternative, scoped to what the question held constant; a "no" without an alternative is refused; "yes" broadens the condition. Tests: `tests/domain/counterfactual-gate.test.ts`, including a real garbled Scribe transcript.
+- Rule v1 has conditions only. A reason that stops being true leaves the rule silent; explicit guardrails come only from the expert's confirmed counterfactual, so the map's v1 to v2 move is real.
 - Tri-state signals: missing telemetry is `unknown`, never guessed, and never fires a guardrail (`src/domain/signals.ts`, `src/domain/evaluation.ts`). A single running version makes scope signals unknown rather than vacuously true.
 
 **Decision Boundary Map computed from the rule.**
@@ -29,12 +30,12 @@ A language model may read the transcript and propose claims; it never creates a 
 **Voice reliability.**
 Server-side: one retry after 300 ms for network errors, timeouts and 5xx; never for auth, quota, rate limits or validation (`withRetry`, `isTransient` in `src/lib/voice/elevenlabs-server.ts`). Browser: the token fetch retries once only when the request never reached the server, so retries never multiply. Tests in `tests/voice/routes.test.ts`, including "the key never appears in a response body".
 
-**Engineering hygiene.** 129 tests, lint clean, typed end to end, one Next.js app, no database, no queue, no agent framework. API keys stay on the server; the browser only ever sees a single-use Scribe token.
+**Engineering hygiene.** 144 tests, lint clean, typed end to end, one Next.js app, no database, no queue, no agent framework. API keys stay on the server; the browser only ever sees a single-use Scribe token.
 
 ## Innovation
 
 - **The unit of capture is the exception, not the workflow.** Process mining, SOP generation and screen recording log what happened. SecondShift only engages when an expert's action contradicts the expected one, and asks about that moment.
-- **It learns what would have changed the decision.** The counterfactual turns one explanation into a boundary: where the rule applies, where it stands down, where it gives way to a different action. The map makes that visible.
+- **It learns what would have changed the decision.** The counterfactual turns one explanation into a boundary: where the rule applies, where it is silent, where it gives way to a different action. The map makes that visible.
 - **It knows what it does not know.** Unverifiable claims are not learned; missing evidence leads to abstention; one incident caps evidence strength.
 - **One judgment, two learners.** The same rule coaches a trainee with provenance and runs as a machine-readable policy. The dataset this builds (context, expected action, deviation, rationale, evidence, counterfactual, boundary, guardrail) is one most organisations do not have.
 - **Voice is the elicitation channel, not decoration.** The question is asked at the moment of deviation, while the reasoning is fresh; ElevenLabs Scribe captures the answer as the expert says it, disfluencies and all, and that verbatim text is the evidence.

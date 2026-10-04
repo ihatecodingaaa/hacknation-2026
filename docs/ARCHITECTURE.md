@@ -12,8 +12,8 @@ src/domain/            pure TypeScript, no React, unit tested
   speech.ts            disfluency-tolerant normalization with offset maps; quote tracing
   extraction.ts        phrase matcher (fallback and cross-check)
   semantic.ts          schema for model-proposed claims; deterministic verification
-  rules.ts             rule v1, derived guardrails, evidence strength
-  counterfactual.ts    choose the boundary to probe; read the answer; rule v2
+  rules.ts             rule v1 (conditions only), evidence strength
+  counterfactual.ts    choose the boundary to probe; read the answer as a draft; rule v2
   evaluation.ts        match a rule (guardrails first), grade a trainee, provenance
   boundary.ts          Decision Boundary Map data; place an incident on it
   memory.ts            decision memory artifact: compile, validate, execute, render
