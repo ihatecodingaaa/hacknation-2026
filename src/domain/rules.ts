@@ -99,6 +99,9 @@ export function buildRule(input: BuildRuleInput): DecisionRule | null {
       expected: c.claimed,
       necessity: "stated",
       evidenceIds: [quoteEvidence.id, sigEvidenceId],
+      quote: c.quote,
+      introducedIn: 1,
+      testedIn: null,
     };
   });
 
@@ -113,6 +116,7 @@ export function buildRule(input: BuildRuleInput): DecisionRule | null {
       insteadAction: null,
       origin: "derived",
       evidenceIds: cond.evidenceIds,
+      introducedIn: 1,
     });
   }
 

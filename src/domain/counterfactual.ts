@@ -143,7 +143,7 @@ export function applyCounterfactual(
   if (answer.stance === "switch") {
     const conditions: RuleCondition[] = rule.conditions.map((c) =>
       c.id === pivotId
-        ? { ...c, necessity: "confirmed", evidenceIds: [...c.evidenceIds, cfEvidence.id] }
+        ? { ...c, necessity: "confirmed", testedIn: version, evidenceIds: [...c.evidenceIds, cfEvidence.id] }
         : c,
     );
 
@@ -166,6 +166,7 @@ export function applyCounterfactual(
       insteadAction: alt,
       origin: "counterfactual",
       evidenceIds: [cfEvidence.id],
+      introducedIn: version,
     };
 
     return {
@@ -197,6 +198,7 @@ export function applyCounterfactual(
               ...c,
               anyOf: [...c.anyOf, cf.confounder as SignalId],
               necessity: "broadened",
+              testedIn: version,
               evidenceIds: [...c.evidenceIds, cfEvidence.id],
             }
           : c,

@@ -62,5 +62,7 @@ describe("deriveSignals", () => {
       versions: [{ version: "v2.14.0", isNew: true, instances: 12, errorRatePct: 9.8 }],
     };
     expect(signalState(deriveSignals(incident), "new_version_only")).toBe("unknown");
+    // "Every version is failing" is not established by a single version either.
+    expect(signalState(deriveSignals(incident), "all_versions_affected")).toBe("unknown");
   });
 });

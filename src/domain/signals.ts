@@ -15,6 +15,8 @@ export interface SignalMeta {
   /** "If {presentPhrase} but {absentPhrase}, ..." */
   presentPhrase: string;
   absentPhrase: string;
+  /** "If {missingPhrase}, ..." */
+  missingPhrase: string;
 }
 
 export const SIGNALS: Record<SignalId, SignalMeta> = {
@@ -25,6 +27,7 @@ export const SIGNALS: Record<SignalId, SignalMeta> = {
     noun: "a deploy right before the failure",
     presentPhrase: "the failure started right after a deploy",
     absentPhrase: "no deploy lined up with the failure",
+    missingPhrase: "deploy timing is unknown",
   },
   error_spike: {
     id: "error_spike",
@@ -33,6 +36,7 @@ export const SIGNALS: Record<SignalId, SignalMeta> = {
     noun: "an error spike",
     presentPhrase: "the error rate spiked",
     absentPhrase: "the error rate stayed normal",
+    missingPhrase: "the error rate is not reported",
   },
   latency_up: {
     id: "latency_up",
@@ -41,6 +45,7 @@ export const SIGNALS: Record<SignalId, SignalMeta> = {
     noun: "rising latency",
     presentPhrase: "latency increased",
     absentPhrase: "latency stayed normal",
+    missingPhrase: "latency is not reported",
   },
   new_version_only: {
     id: "new_version_only",
@@ -49,6 +54,7 @@ export const SIGNALS: Record<SignalId, SignalMeta> = {
     noun: "failures isolated to the new version",
     presentPhrase: "only the new version was failing",
     absentPhrase: "the failures weren't isolated to the new version",
+    missingPhrase: "per-version metrics are missing",
   },
   all_versions_affected: {
     id: "all_versions_affected",
@@ -57,6 +63,7 @@ export const SIGNALS: Record<SignalId, SignalMeta> = {
     noun: "failures on every version",
     presentPhrase: "every version was failing",
     absentPhrase: "the old version was healthy",
+    missingPhrase: "per-version metrics are missing",
   },
   cpu_saturated: {
     id: "cpu_saturated",
@@ -65,6 +72,7 @@ export const SIGNALS: Record<SignalId, SignalMeta> = {
     noun: "CPU saturation",
     presentPhrase: "CPU was saturated",
     absentPhrase: "CPU was normal",
+    missingPhrase: "CPU is not reported",
   },
   db_degraded: {
     id: "db_degraded",
@@ -73,7 +81,17 @@ export const SIGNALS: Record<SignalId, SignalMeta> = {
     noun: "a degraded database",
     presentPhrase: "the database was degraded",
     absentPhrase: "the database was healthy",
+    missingPhrase: "database health is unknown",
   },
+};
+
+/**
+ * Signals measured from the same data move together: per-version error rates
+ * decide both scope signals. Used when building coherent hypotheticals.
+ */
+export const COUPLED: Partial<Record<SignalId, SignalId>> = {
+  new_version_only: "all_versions_affected",
+  all_versions_affected: "new_version_only",
 };
 
 export const SIGNAL_ORDER: SignalId[] = [
@@ -196,13 +214,12 @@ function versionScope(incident: IncidentState): {
   };
 
   if (fresh.length === 0 || old.length === 0) {
+    // With a single version there is nothing to compare: "only the new one"
+    // and "every one" are both unanswerable, not true.
+    const detail = `Only one version running (${breakdown}), nothing to compare against`;
     return {
-      newOnly: {
-        id: "new_version_only",
-        state: "unknown",
-        detail: "Only one version running, nothing to compare against",
-      },
-      all,
+      newOnly: { id: "new_version_only", state: "unknown", detail },
+      all: { id: "all_versions_affected", state: "unknown", detail },
     };
   }
   const newOnly = fresh.every(failing) && old.every(healthy);
@@ -259,4 +276,25 @@ export function signalById(
   id: SignalId,
 ): IncidentSignal | undefined {
   return signals.find((s) => s.id === id);
+}
+
+/** How each signal is measured, in words. Exported with decision memory so a consumer can reproduce it. */
+export function measurementRule(id: SignalId): string {
+  const t = THRESHOLDS;
+  switch (id) {
+    case "deploy_preceded_failure":
+      return `Degradation began 0-${t.deployWindowMin} min after a deploy completed`;
+    case "error_spike":
+      return `5xx rate >= max(${t.errorSpikeFloorPct}%, ${t.errorSpikeFactor}x baseline)`;
+    case "latency_up":
+      return `p99 latency >= ${t.latencyFactor}x baseline`;
+    case "new_version_only":
+      return `Every new version failing (>= spike threshold) and every old version healthy (<= max(${t.healthyFloorPct}%, ${t.healthyFactor}x baseline)); unknown without per-version data or with one version`;
+    case "all_versions_affected":
+      return "Every running version at or above the spike threshold; unknown without per-version data or with one version";
+    case "cpu_saturated":
+      return `CPU >= ${t.cpuSaturatedPct}%`;
+    case "db_degraded":
+      return "Database primary reported unhealthy";
+  }
 }

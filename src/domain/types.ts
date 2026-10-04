@@ -201,6 +201,12 @@ export interface RuleCondition {
   expected: "present" | "absent";
   necessity: "stated" | "confirmed" | "broadened";
   evidenceIds: string[];
+  /** The expert's exact words that produced this condition. */
+  quote: string | null;
+  /** Rule version that introduced the condition. */
+  introducedIn: number;
+  /** Rule version whose counterfactual tested it, if any. */
+  testedIn: number | null;
 }
 
 export interface Guardrail {
@@ -212,6 +218,8 @@ export interface Guardrail {
   insteadAction: ActionId | null;
   origin: "derived" | "counterfactual";
   evidenceIds: string[];
+  /** Rule version that introduced the guardrail. */
+  introducedIn: number;
 }
 
 /**
