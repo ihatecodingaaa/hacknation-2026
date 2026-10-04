@@ -156,7 +156,7 @@ function Stat({ label, value, tone = "text" }: { label: string; value: ReactNode
 
 function SignalList({ signals, highlight }: { signals: IncidentSignal[]; highlight?: Set<string> }) {
   return (
-    <ul className="grid gap-1 sm:grid-cols-2">
+    <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2">
       {signals.map((s) => (
         <li
           key={s.id}
@@ -235,7 +235,7 @@ function IncidentSummary({
 
 function ActionButtons({ onChoose, chosen, runbook, large }: { onChoose: (a: ActionId) => void; chosen: ActionId | null; runbook: ActionId; large?: boolean }) {
   return (
-    <div className="grid gap-2 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       {ACTION_ORDER.map((id) => (
         <button
           key={id}
@@ -266,7 +266,7 @@ function ChapterBefore(p: JudgeViewProps) {
       title={<>The runbook says <span className="text-expected">{exp.label.toLowerCase()}</span>.</>}
       lead={`${s.incident.service} is failing. SecondShift first predicts what the playbook would do, so it can notice when an expert does something else.`}
     >
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
         <IncidentSummary incident={s.incident} signals={s.signals} />
         <div className="space-y-6">
           <div className="border border-expected/30 bg-raised px-5 py-4">
@@ -308,7 +308,7 @@ function ChapterSurprise(p: JudgeViewProps) {
       title={<>The expert <span className="text-expert">{act.past}</span> instead.</>}
       lead="That difference is the knowledge. The runbook cannot explain it. Only the expert can."
     >
-      <div className="grid items-stretch gap-4 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
         <div className="border border-expected/30 bg-raised px-5 py-5">
           <Label>Runbook expected · {d.expected.step.id}</Label>
           <div className="mt-1 text-[34px] font-semibold leading-tight text-expected">{exp.label}</div>
@@ -324,7 +324,7 @@ function ChapterSurprise(p: JudgeViewProps) {
         </div>
       </div>
 
-      <div className="mt-7 grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+      <div className="mt-7 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <div>
           <div className="mb-2 text-[17px] font-medium text-text">On screen, but not in the runbook</div>
           <ul className="space-y-2">
@@ -375,7 +375,7 @@ function ChapterWhy(p: JudgeViewProps) {
         </div>
       ) : (
         s.extraction && (
-          <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid grid-cols-1 gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
             <ClaimVerification
               explanation={s.explanation}
               extraction={s.extraction}
@@ -440,7 +440,7 @@ function ChapterBoundary(p: JudgeViewProps) {
       title="What would change the expert's mind?"
       lead="Columns are the reasons the expert gave. Rows ask the rule engine what it recommends if one reason stops being true, or cannot be measured."
     >
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
         <div>{p.map && <DecisionBoundaryMap map={p.map} rule={rule} />}</div>
 
         {cf && (
@@ -567,7 +567,7 @@ function ChapterTransfer(p: JudgeViewProps) {
       title="A trainee, on an incident the expert never saw."
       lead="Different service, different numbers. The trainee picks an action; SecondShift grades it against the expert's rule and shows where the verdict came from."
     >
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" role="tablist" aria-label="Trainee incidents">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4" role="tablist" aria-label="Trainee incidents">
         {p.cases.map((c) => (
           <button
             key={c.key}
@@ -589,7 +589,7 @@ function ChapterTransfer(p: JudgeViewProps) {
         ))}
       </div>
 
-      <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+      <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <div className="space-y-5">
           <IncidentSummary incident={inc} signals={p.traineeSignals} compact />
         </div>
@@ -635,7 +635,7 @@ function ChapterTransfer(p: JudgeViewProps) {
       </div>
 
       {ev && p.map && (
-        <div className="mt-8 grid gap-8 2xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="mt-8 grid grid-cols-1 gap-8 2xl:grid-cols-[minmax(0,1fr)_380px]">
           <div>
             <div className="mb-2 text-[17px] font-medium text-text">Where {inc.id} lands on the learned boundary</div>
             <DecisionBoundaryMap map={p.map} rule={rule} placement={p.placement} incidentId={inc.id} size="compact" />
@@ -668,7 +668,7 @@ function ChapterMemory(p: JudgeViewProps) {
       title="The same judgment can train the next engineer, or become context for an enterprise agent."
       lead="The rule that just coached the trainee is a versioned, machine-readable artifact. An evaluator that reads only that file runs it on 14 seeded incidents."
     >
-      <div className="grid gap-10 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-10 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div>
           <div className="mb-3 text-[17px] font-medium text-text">Runbook alone vs runbook + decision memory</div>
           {p.benchmark && <BenchmarkPanel results={p.benchmark} large />}
