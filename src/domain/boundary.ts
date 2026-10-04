@@ -193,6 +193,8 @@ export type AxisPosition = "inside" | "flipped" | "missing";
 export interface Placement {
   /** Where the incident sits on each condition axis. */
   positions: Record<string, AxisPosition>;
+  /** The incident's own measurement for each axis. */
+  details: Record<string, string>;
   outcome: BoundaryOutcome;
   /** Conditions responsible for the outcome when it is not "apply". */
   decisiveAxes: string[];
@@ -203,8 +205,10 @@ export interface Placement {
 export function placeIncident(rule: DecisionRule, signals: IncidentSignal[]): Placement {
   const match = matchRule(rule, signals);
   const positions: Record<string, AxisPosition> = {};
+  const details: Record<string, string> = {};
   for (const m of match.conditions) {
     positions[m.conditionId] = m.met === true ? "inside" : m.met === "unknown" ? "missing" : "flipped";
+    details[m.conditionId] = m.anyOf.map((id) => signalById(signals, id)?.detail ?? "not measured").join(" · ");
   }
   const outcome = outcomeOf(match, rule);
   let decisiveAxes: string[] = [];
@@ -218,5 +222,5 @@ export function placeIncident(rule: DecisionRule, signals: IncidentSignal[]): Pl
       .filter(([, p]) => p !== "inside")
       .map(([id]) => id);
   }
-  return { positions, outcome, decisiveAxes, runbook: expectedAction(signals).action };
+  return { positions, details, outcome, decisiveAxes, runbook: expectedAction(signals).action };
 }

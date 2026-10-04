@@ -83,7 +83,7 @@ export function ConfidenceMeter({ rule }: { rule: DecisionRule }) {
         ))}
       </ul>
       <p className="mt-1.5 text-[11px] leading-snug text-faint">
-        Heuristic: the sum of the factors above, capped at {c.cap}. {c.capReason}
+        A transparent heuristic, not a probability: the sum of the factors above, capped at {c.cap}. {c.capReason}
       </p>
     </div>
   );
@@ -155,7 +155,7 @@ export function RulePanel({ rule }: { rule: DecisionRule | null }) {
         </ul>
       </Section>
 
-      <Section title="Confidence">
+      <Section title="Evidence strength">
         <ConfidenceMeter rule={rule} />
       </Section>
 

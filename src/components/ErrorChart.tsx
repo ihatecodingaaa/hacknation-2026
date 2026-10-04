@@ -5,7 +5,7 @@ const H = 76;
 const PAD = { l: 26, r: 6, t: 8, b: 14 };
 
 /** 5xx rate for the last 20 minutes with the deploy marked. */
-export function ErrorChart({ incident }: { incident: IncidentState }) {
+export function ErrorChart({ incident, wide = false }: { incident: IncidentState; wide?: boolean }) {
   const series = incident.errorSeries;
   const n = series.length;
   const max = Math.max(2, ...series) * 1.15;
@@ -19,7 +19,7 @@ export function ErrorChart({ incident }: { incident: IncidentState }) {
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
-      className="block w-full max-w-[360px]"
+      className={wide ? "block w-full max-w-[640px]" : "block w-full max-w-[360px]"}
       role="img"
       aria-label={`5xx error rate over the last ${n} minutes${incident.deploy ? `, deploy ${incident.deploy.version} marked` : ""}`}
     >

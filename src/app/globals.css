@@ -83,8 +83,32 @@ body {
   animation: recpulse 1.1s ease-in-out infinite;
 }
 
+/* A boundary cell the latest rule revision moved: one pulse, then still. */
+@keyframes boundarymoved {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--rule) 70%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+
+.boundary-moved {
+  animation: boundarymoved 1.2s ease-out 2;
+}
+
+/* Visible keyboard focus everywhere. */
+:focus-visible {
+  outline: 2px solid var(--expert);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .rec-dot {
+  .rec-dot,
+  .boundary-moved {
     animation: none;
+  }
+  html {
+    scroll-behavior: auto;
   }
 }

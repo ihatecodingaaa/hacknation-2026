@@ -17,10 +17,12 @@ export function Tag({
   children,
   tone = "muted",
   dashed,
+  large,
 }: {
   children: ReactNode;
   tone?: "muted" | "expected" | "expert" | "diverge" | "rule" | "bad" | "ok" | "unknown";
   dashed?: boolean;
+  large?: boolean;
 }) {
   const tones: Record<string, string> = {
     muted: "text-muted border-line-strong",
@@ -35,7 +37,8 @@ export function Tag({
   return (
     <span
       className={cx(
-        "inline-flex items-center whitespace-nowrap rounded-[3px] border px-1.5 py-px font-mono text-[10px] uppercase tracking-wider",
+        "inline-flex items-center whitespace-nowrap rounded-[3px] border font-mono uppercase tracking-wider",
+        large ? "px-2 py-0.5 text-[12px]" : "px-1.5 py-px text-[10px]",
         dashed && "border-dashed",
         tones[tone],
       )}
@@ -92,6 +95,7 @@ export function Button({
   tone = "default",
   title,
   type = "button",
+  large = false,
 }: {
   children: ReactNode;
   onClick?: () => void;
@@ -99,6 +103,7 @@ export function Button({
   tone?: "default" | "primary" | "rule" | "danger" | "ghost";
   title?: string;
   type?: "button" | "submit";
+  large?: boolean;
 }) {
   const tones: Record<string, string> = {
     default: "border-line-strong bg-raised text-text hover:border-muted",
@@ -114,7 +119,8 @@ export function Button({
       onClick={onClick}
       disabled={disabled}
       className={cx(
-        "inline-flex items-center gap-1.5 rounded-[3px] border px-2.5 py-1 text-[12px] font-medium transition-colors",
+        "inline-flex items-center gap-1.5 rounded-[3px] border font-medium transition-colors",
+        large ? "px-3.5 py-2 text-[15px]" : "px-2.5 py-1 text-[12px]",
         "disabled:cursor-not-allowed disabled:opacity-40",
         tones[tone],
       )}

@@ -22,12 +22,17 @@ export function VoiceAnswer({
   submitLabel,
   onSubmit,
   placeholder,
+  large = false,
+  busy: working = null,
 }: {
   voiceConfigured: boolean;
   scripted: ScriptedOption[];
   submitLabel: string;
   onSubmit: (text: string, source: TranscriptSource) => void;
   placeholder?: string;
+  large?: boolean;
+  /** Set while the submitted answer is being processed, e.g. by the semantic extractor. */
+  busy?: string | null;
 }) {
   const [text, setText] = useState("");
   const [partial, setPartial] = useState("");
@@ -107,14 +112,14 @@ export function VoiceAnswer({
     if (source === "scripted") setSource("typed");
   }
 
-  const busy = rec !== "idle";
+  const busy = rec !== "idle" || Boolean(working);
   const canSubmit = !busy && text.trim().length > 0;
 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         {rec === "recording" || rec === "finishing" ? (
-          <Button tone="danger" onClick={stop} disabled={rec === "finishing"}>
+          <Button tone="danger" onClick={stop} disabled={rec === "finishing"} large={large}>
             <span className="rec-dot inline-block h-2 w-2 rounded-full bg-bad" />
             {rec === "finishing" ? "Finalising transcript…" : "Stop recording"}
           </Button>
@@ -122,7 +127,8 @@ export function VoiceAnswer({
           <Button
             tone="primary"
             onClick={start}
-            disabled={!voiceConfigured || rec === "connecting"}
+            disabled={!voiceConfigured || rec === "connecting" || Boolean(working)}
+            large={large}
             title={voiceConfigured ? "Speak your answer" : "ELEVENLABS_API_KEY is not set on the server"}
           >
             <span className="inline-block h-2 w-2 rounded-full bg-expert" />
@@ -140,6 +146,7 @@ export function VoiceAnswer({
             key={s.label}
             tone="ghost"
             disabled={busy}
+            large={large}
             onClick={() => {
               setError(null);
               setText(s.text);
@@ -170,10 +177,12 @@ export function VoiceAnswer({
           value={text}
           onChange={(e) => edit(e.target.value)}
           readOnly={busy}
-          rows={3}
+          rows={large ? 4 : 3}
+          aria-label="Answer"
           placeholder={placeholder ?? "Type the answer…"}
           className={cx(
-            "w-full resize-y rounded-[3px] border bg-bg px-2.5 py-2 text-[13px] leading-relaxed text-text outline-none",
+            "w-full resize-y rounded-[3px] border bg-bg px-2.5 py-2 leading-relaxed text-text outline-none",
+            large ? "text-[17px]" : "text-[13px]",
             "placeholder:text-faint focus:border-muted",
             busy ? "border-expert/60" : "border-line-strong",
           )}
@@ -183,11 +192,18 @@ export function VoiceAnswer({
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>{text.trim() && <SourceTag source={source} />}</div>
-        <Button tone="primary" disabled={!canSubmit} onClick={() => onSubmit(text.trim(), source)}>
-          {submitLabel}
-        </Button>
+        <div className="flex items-center gap-3">
+          {working && (
+            <span className="font-mono text-[11.5px] text-expert" role="status">
+              {working}
+            </span>
+          )}
+          <Button tone="primary" disabled={!canSubmit} onClick={() => onSubmit(text.trim(), source)} large={large}>
+            {submitLabel}
+          </Button>
+        </div>
       </div>
     </div>
   );

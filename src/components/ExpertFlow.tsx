@@ -2,10 +2,13 @@
 
 import { useState, type ReactNode } from "react";
 import { ACTIONS, ACTION_ORDER } from "@/domain/actions";
+import type { BoundaryMapData } from "@/domain/boundary";
 import { SCRIPTED } from "@/domain/scenarios";
 import type { ExpertSession } from "@/domain/session";
 import { SIGNALS } from "@/domain/signals";
-import type { ActionId, Citation, CounterfactualStance, SignalState, TranscriptSource } from "@/domain/types";
+import type { ActionId, CounterfactualStance, SignalState, TranscriptSource } from "@/domain/types";
+import { DecisionBoundaryMap } from "./boundary/DecisionBoundaryMap";
+import { ClaimVerification } from "./ClaimVerification";
 import { VoiceAnswer } from "./VoiceAnswer";
 import { Button, Label, SourceTag, Tag, cx } from "./ui";
 
@@ -72,31 +75,8 @@ function SpeechLine({ status, onReplay }: { status: SpeechStatus; onReplay: () =
   );
 }
 
-function stateWord(s: SignalState | "present" | "absent"): string {
+function stateWord(s: SignalState): string {
   return s === "present" ? "yes" : s === "absent" ? "no" : "unknown";
-}
-
-function Highlighted({ text, citations }: { text: string; citations: Citation[] }) {
-  const parts: ReactNode[] = [];
-  let at = 0;
-  citations.forEach((c, i) => {
-    if (c.start > at) parts.push(text.slice(at, c.start));
-    parts.push(
-      <mark
-        key={i}
-        title={`${SIGNALS[c.signal].label}: ${c.grounded ? "confirmed by telemetry" : "not supported by telemetry"}`}
-        className={cx(
-          "rounded-[2px] px-0.5 text-text",
-          c.grounded ? "bg-rule/20 underline decoration-rule underline-offset-[3px]" : "bg-bad/15 line-through decoration-bad",
-        )}
-      >
-        {text.slice(c.start, c.end)}
-      </mark>,
-    );
-    at = c.end;
-  });
-  if (at < text.length) parts.push(text.slice(at));
-  return <p className="text-[14px] leading-relaxed text-text">{parts}</p>;
 }
 
 function ActionChooser({
@@ -127,6 +107,8 @@ export function ExpertFlow({
   session: s,
   voiceConfigured,
   speech,
+  extracting,
+  map,
   onChoose,
   onExplain,
   onRetryExplain,
@@ -138,6 +120,8 @@ export function ExpertFlow({
   session: ExpertSession;
   voiceConfigured: boolean;
   speech: { why: SpeechStatus; cf: SpeechStatus };
+  extracting: string | null;
+  map: BoundaryMapData | null;
   onChoose: (a: ActionId) => void;
   onExplain: (text: string, source: TranscriptSource) => void;
   onRetryExplain: () => void;
@@ -257,6 +241,7 @@ export function ExpertFlow({
                 { label: "Try a vague answer", text: SCRIPTED.vagueExplanation },
               ]}
               submitLabel="Learn from this answer"
+              busy={extracting}
               placeholder="e.g. The failures started right after the deploy and only the new version is affected…"
               onSubmit={onExplain}
             />
@@ -266,51 +251,13 @@ export function ExpertFlow({
 
       {s.explanation && s.extraction && (
         <Step n="05" title="What SecondShift heard" tone={s.extraction.status === "grounded" ? "rule" : "diverge"}>
-          <Highlighted text={s.explanation.text} citations={s.extraction.citations} />
-
-          {s.extraction.citations.length > 0 && (
-            <table className="mt-3 w-full text-[12px]">
-              <thead>
-                <tr className="text-left font-mono text-[10px] uppercase tracking-wider text-faint">
-                  <th className="pb-1 pr-2 font-normal">phrase</th>
-                  <th className="pb-1 pr-2 font-normal">signal</th>
-                  <th className="pb-1 pr-2 font-normal">expert says</th>
-                  <th className="pb-1 pr-2 font-normal">telemetry</th>
-                  <th className="pb-1 text-right font-normal">result</th>
-                </tr>
-              </thead>
-              <tbody>
-                {s.extraction.citations.map((c, i) => (
-                  <tr key={i} className="border-t border-line align-top">
-                    <td className="py-1.5 pr-2 italic text-muted">&ldquo;{c.quote}&rdquo;</td>
-                    <td className="py-1.5 pr-2 text-text">{SIGNALS[c.signal].label}</td>
-                    <td className="py-1.5 pr-2 font-mono text-muted">{stateWord(c.claimed)}</td>
-                    <td className={cx("py-1.5 pr-2 font-mono", c.observed === "unknown" ? "text-unknown" : "text-muted")}>
-                      {stateWord(c.observed)}
-                    </td>
-                    <td className="py-1.5 text-right">
-                      {c.grounded ? (
-                        <Tag tone="rule">{c.claimed === "present" ? "learned" : "learned (not)"}</Tag>
-                      ) : c.observed === "unknown" ? (
-                        <Tag tone="unknown" dashed>
-                          unverifiable
-                        </Tag>
-                      ) : (
-                        <Tag tone="bad">contradicted</Tag>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          {s.extraction.rejectionQuote && (
-            <div className="mt-3 text-[12px] text-muted">
-              Why not <span className="text-expected">{exp.label.toLowerCase()}</span>:{" "}
-              <span className="italic text-text">&ldquo;{s.extraction.rejectionQuote}&rdquo;</span>
-            </div>
-          )}
+          <ClaimVerification
+            explanation={s.explanation}
+            extraction={s.extraction}
+            signals={s.signals}
+            incidentId={s.incident.id}
+            rejected={s.expected.action}
+          />
 
           {s.extraction.status === "grounded" ? (
             <p className="mt-3 text-[12px] text-rule">
@@ -449,6 +396,12 @@ export function ExpertFlow({
               Test this judgment on a trainee →
             </Button>
           </div>
+        </Step>
+      )}
+
+      {s.ruleV1 && s.rule && map && (
+        <Step n="08" title="Decision boundary map" tone="rule">
+          <DecisionBoundaryMap map={map} rule={s.rule} size="compact" />
         </Step>
       )}
     </div>

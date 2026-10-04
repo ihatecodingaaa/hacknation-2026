@@ -1,4 +1,5 @@
 import { ACTIONS, ACTION_ORDER } from "@/domain/actions";
+import type { BoundaryMapData, Placement } from "@/domain/boundary";
 import { expectedAction } from "@/domain/playbook";
 import { conditionLabel } from "@/domain/rules";
 import type { TraineeCase } from "@/domain/scenarios";
@@ -10,6 +11,7 @@ import type {
   IncidentSignal,
   Verdict,
 } from "@/domain/types";
+import { DecisionBoundaryMap } from "./boundary/DecisionBoundaryMap";
 import { ConfidenceMeter, EvidenceItem, RuleCard } from "./RulePanel";
 import { Label, Section, Tag, cx } from "./ui";
 
@@ -67,6 +69,8 @@ export function TraineeFlow({
   evaluation,
   signals,
   sourceSignals,
+  map,
+  placement,
 }: {
   rule: DecisionRule;
   activeCase: TraineeCase;
@@ -77,6 +81,8 @@ export function TraineeFlow({
   evaluation: EvaluationResult | null;
   signals: IncidentSignal[];
   sourceSignals: IncidentSignal[];
+  map: BoundaryMapData | null;
+  placement: Placement | null;
 }) {
   const incident = activeCase.incident;
   const runbook = expectedAction(signals);
@@ -215,6 +221,13 @@ export function TraineeFlow({
               </tbody>
             </table>
           </section>
+
+          {map && (
+            <section>
+              <Label className="mb-1.5">Where {incident.id} lands on the learned boundary</Label>
+              <DecisionBoundaryMap map={map} rule={rule} placement={placement} incidentId={incident.id} size="compact" />
+            </section>
+          )}
         </>
       )}
     </div>
@@ -280,7 +293,7 @@ export function ProvenancePanel({
           ))}
         </ul>
       </Section>
-      <Section title="Confidence" className="border-b-0">
+      <Section title="Evidence strength" className="border-b-0">
         <ConfidenceMeter rule={rule} />
       </Section>
     </div>
