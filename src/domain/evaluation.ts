@@ -36,6 +36,10 @@ export function matchRule(rule: DecisionRule, signals: IncidentSignal[]): RuleMa
   if (firedGuardrail) {
     return { outcome: "guardrail", conditions, firedGuardrail, recommended: firedGuardrail.insteadAction };
   }
+  // A rule with no conditions has no evidence to act on. It never applies.
+  if (conditions.length === 0) {
+    return { outcome: "not_applicable", conditions, firedGuardrail: null, recommended: null };
+  }
   if (conditions.every((c) => c.met === true)) {
     return { outcome: "applies", conditions, firedGuardrail: null, recommended: rule.action };
   }

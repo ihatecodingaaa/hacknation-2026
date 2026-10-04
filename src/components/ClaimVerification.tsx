@@ -10,6 +10,7 @@ const REJECTED_TEXT: Record<RejectedCandidate["reason"], string> = {
   not_observable: "not observable",
   hedged: "expert unsure",
   low_confidence: "low confidence",
+  off_topic: "not about the runbook action",
 };
 
 function VerdictTag({ c, large }: { c: Citation; large?: boolean }) {
@@ -134,7 +135,16 @@ export function ClaimVerification({
               ))}
               {x.rejected.map((r, i) => (
                 <tr key={`r${i}`} className="border-t border-line align-top">
-                  <td className={cx(td, "italic text-faint")}>&ldquo;{r.text}&rdquo;</td>
+                  <td className={cx(td, "text-faint")}>
+                    {r.reason === "not_in_transcript" ? (
+                      // The model's wording, not the expert's: never shown as a quote.
+                      <span>
+                        <span className="font-mono text-[10.5px] uppercase tracking-wider">model wrote:</span> {r.text}
+                      </span>
+                    ) : (
+                      <span className="italic">&ldquo;{r.text}&rdquo;</span>
+                    )}
+                  </td>
                   <td className={cx(td, "text-muted")}>{r.signal ? SIGNALS[r.signal].label : "(no matching signal)"}</td>
                   <td className={cx(td, "text-faint", large ? "text-[12.5px]" : "text-[11px]")}>{r.detail}</td>
                   <td className={cx(td, "pr-0 text-right")}>
@@ -172,7 +182,7 @@ export function ClaimVerification({
 
       {x.uncertainty.length > 0 && (
         <div>
-          <Label className="mb-1">Where the expert hedged</Label>
+          <Label className="mb-1">Uncertainty noted by the extractor · model wording, not evidence</Label>
           <ul className="list-inside list-disc text-[12.5px] text-muted">
             {x.uncertainty.map((u, i) => (
               <li key={i}>{u}</li>

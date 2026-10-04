@@ -1,12 +1,13 @@
 import { ACTIONS } from "./actions";
 import { signalState } from "./signals";
-import { normalizeSpeech, toOriginalSpan } from "./speech";
+import { isHedged, normalizeSpeech, toOriginalSpan } from "./speech";
 import type {
   ActionId,
   Citation,
   ClaimVerdict,
   Extraction,
   IncidentSignal,
+  RejectedCandidate,
   SignalId,
 } from "./types";
 
@@ -136,10 +137,18 @@ export function extractExplanation(
     }
   }
 
+  // A hedged phrase ("maybe the database was slow") is shown, not learned.
+  const rejected: RejectedCandidate[] = [];
   const citations: Citation[] = found
     .sort((a, b) => a.start - b.start)
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    .map(({ nStart, nEnd, ...c }) => c);
+    .map(({ nStart, nEnd, ...c }) => c)
+    .filter((c) => {
+      const hedge = isHedged(text, c);
+      if (!hedge) return true;
+      rejected.push({ text: c.quote, signal: c.signal, reason: "hedged", detail: `Hedged in the transcript ("${hedge}")` });
+      return false;
+    });
 
   const grounded = citations.some((c) => c.grounded && c.claimed === "present");
 
@@ -148,7 +157,7 @@ export function extractExplanation(
     rejectionQuote: findRejection(text, expectedAction),
     status: grounded ? "grounded" : "ungrounded",
     extractor: { ...PATTERN_EXTRACTOR },
-    rejected: [],
+    rejected,
     causal: [],
     interpretation: null,
     uncertainty: [],

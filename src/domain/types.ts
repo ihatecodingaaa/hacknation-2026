@@ -153,7 +153,7 @@ export interface ExtractorInfo {
 export interface RejectedCandidate {
   text: string;
   signal: SignalId | null;
-  reason: "not_in_transcript" | "not_observable" | "hedged" | "low_confidence";
+  reason: "not_in_transcript" | "not_observable" | "hedged" | "low_confidence" | "off_topic";
   detail: string;
 }
 

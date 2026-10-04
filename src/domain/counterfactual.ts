@@ -190,6 +190,30 @@ export function applyCounterfactual(
     };
   }
 
+  // "still" with nothing to broaden to, on the rule's only condition: dropping
+  // it would leave a rule that acts on no evidence at all. Keep the condition,
+  // record the answer, and lower evidence strength: the deciding reason has not
+  // been captured yet.
+  if (!cf.confounder && rule.conditions.length <= 1) {
+    return {
+      ...rule,
+      version,
+      evidence,
+      confidence: computeConfidence([
+        ...baseFactors,
+        { label: "Counterfactual: the stated reason did not decide it; the real condition is not captured yet", delta: -0.1 },
+      ]),
+      history: [
+        ...rule.history,
+        {
+          version,
+          summary: `Counterfactual: expert would act without "${pivotLabel}"; kept as the only observable condition`,
+        },
+      ],
+      changedIds: [],
+    };
+  }
+
   // "still": the cited signal was not necessary. Broaden or drop the condition.
   const conditions: RuleCondition[] = cf.confounder
     ? rule.conditions.map((c) =>
@@ -205,10 +229,15 @@ export function applyCounterfactual(
       )
     : rule.conditions.filter((c) => c.id !== pivotId);
 
+  // A dropped condition takes its derived guardrail with it: the expert just
+  // said the rule holds without it.
+  const guardrails = cf.confounder ? rule.guardrails : rule.guardrails.filter((g) => !(g.origin === "derived" && g.id === `g-${cf.pivot}`));
+
   return {
     ...rule,
     version,
     conditions,
+    guardrails,
     evidence,
     confidence: computeConfidence([
       ...baseFactors,

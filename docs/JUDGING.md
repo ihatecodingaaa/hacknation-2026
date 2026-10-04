@@ -8,6 +8,7 @@ Every claim below points at code or a test. Paths are relative to the repo root.
 A language model may read the transcript and propose claims; it never creates a rule.
 - Strict schema for model output (`SemanticCandidatesSchema`, zod) with bounded strings and arrays, enumerated signal and action ids: `src/domain/semantic.ts`.
 - Four deterministic gates before a claim is learned: the quote must be traceable to the transcript (`locateQuote`, `src/domain/speech.ts`), it must name an observable signal, it must not be hedged or low-confidence, and the telemetry must agree. Tests: `tests/domain/semantic.test.ts` (invented quotes, contradicted claims, unmapped and hedged claims, malformed JSON, fallback on bad payloads).
+- Code also decides hedging (hedge words in the claim's clause block it) and negation (a traced quote can never add, drop or skip a "not"). Regressions: `tests/domain/review-regressions.test.ts`.
 - The extractor is not shown the telemetry. Test: `extraction prompt` in `tests/voice/reasoning.test.ts`.
 - Disfluency-tolerant matching that never rewrites the source: matching runs on a cleaned copy, spans are mapped back, and evidence always quotes the original words (`normalizeSpeech`, `toOriginalSpan`).
 
@@ -28,7 +29,7 @@ A language model may read the transcript and propose claims; it never creates a 
 **Voice reliability.**
 Server-side: one retry after 300 ms for network errors, timeouts and 5xx; never for auth, quota, rate limits or validation (`withRetry`, `isTransient` in `src/lib/voice/elevenlabs-server.ts`). Browser: the token fetch retries once only when the request never reached the server, so retries never multiply. Tests in `tests/voice/routes.test.ts`, including "the key never appears in a response body".
 
-**Engineering hygiene.** 113 tests, lint clean, typed end to end, one Next.js app, no database, no queue, no agent framework. API keys stay on the server; the browser only ever sees a single-use Scribe token.
+**Engineering hygiene.** 129 tests, lint clean, typed end to end, one Next.js app, no database, no queue, no agent framework. API keys stay on the server; the browser only ever sees a single-use Scribe token.
 
 ## Innovation
 

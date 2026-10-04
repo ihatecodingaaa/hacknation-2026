@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { ACTION_ORDER } from "./actions";
+import { ACTIONS, ACTION_ORDER } from "./actions";
 import { extractExplanation, findRejection } from "./extraction";
 import { SIGNAL_ORDER, signalState } from "./signals";
-import { locateQuote } from "./speech";
+import { isHedged, locateQuote } from "./speech";
 import type {
   ActionId,
   CausalCheck,
@@ -130,9 +130,21 @@ export function verifySemanticCandidates(input: VerifyInput): Extraction {
     });
   }
 
+  // Hedging is decided by code as well: a hedge word in the clause, or a place
+  // the extractor itself flagged as uncertain, blocks every claim there.
+  const unsure = candidates.uncertainty.map((u) => locateQuote(transcript, u)).filter((x) => x !== null);
+  const overlaps = (a: { start: number; end: number }, b: { start: number; end: number }) => a.start < b.end && b.start < a.end;
+  function hedgeAt(span: { start: number; end: number }): string | null {
+    const word = isHedged(transcript, span);
+    if (word) return `Hedged in the transcript ("${word}")`;
+    return unsure.some((u) => overlaps(u, span)) ? "The extractor marked this as uncertain" : null;
+  }
+  const blocked: { start: number; end: number; reason: RejectedCandidate["reason"]; detail: string }[] = [];
+
   for (const o of candidates.observations) {
     const span = locateQuote(transcript, o.text);
     const signal = o.candidateSignal === "unmapped" ? null : o.candidateSignal;
+    const hedge = span ? hedgeAt(span) : null;
     if (!span) {
       rejected.push({ text: o.text, signal, reason: "not_in_transcript", detail: "Quoted words are not in the transcript" });
     } else if (!signal) {
@@ -142,15 +154,14 @@ export function verifySemanticCandidates(input: VerifyInput): Extraction {
         reason: "not_observable",
         detail: o.note ? `Refers to ${o.note}, which this incident's telemetry does not measure` : "Not an observable signal",
       });
-    } else if (o.polarity === "unknown") {
-      rejected.push({ text: transcript.slice(span.start, span.end), signal, reason: "hedged", detail: "The expert was unsure" });
+    } else if (o.polarity === "unknown" || hedge) {
+      const detail = hedge ?? "The expert was unsure";
+      rejected.push({ text: transcript.slice(span.start, span.end), signal, reason: "hedged", detail });
+      blocked.push({ ...span, reason: "hedged", detail });
     } else if (o.confidence < MIN_CANDIDATE_CONFIDENCE) {
-      rejected.push({
-        text: transcript.slice(span.start, span.end),
-        signal,
-        reason: "low_confidence",
-        detail: `Extractor confidence ${o.confidence.toFixed(2)} is below ${MIN_CANDIDATE_CONFIDENCE}`,
-      });
+      const detail = `Extractor confidence ${o.confidence.toFixed(2)} is below ${MIN_CANDIDATE_CONFIDENCE}`;
+      rejected.push({ text: transcript.slice(span.start, span.end), signal, reason: "low_confidence", detail });
+      blocked.push({ ...span, reason: "low_confidence", detail });
     } else {
       cite(signal, o.polarity, span);
     }
@@ -162,6 +173,18 @@ export function verifySemanticCandidates(input: VerifyInput): Extraction {
     const cause = c.cause === "unmapped" ? null : c.cause;
     if (!span) {
       rejected.push({ text: c.text, signal: cause, reason: "not_in_transcript", detail: "Quoted words are not in the transcript" });
+      continue;
+    }
+    // The same gates as observations: a causal claim on hedged or doubted words is not learned.
+    const hedge = hedgeAt(span);
+    const block = blocked.find((b) => overlaps(b, span));
+    if (hedge || block) {
+      rejected.push({
+        text: transcript.slice(span.start, span.end),
+        signal: cause,
+        reason: hedge ? "hedged" : block!.reason,
+        detail: hedge ?? block!.detail,
+      });
       continue;
     }
     const state = cause ? signalState(signals, cause) : "unknown";
@@ -177,16 +200,23 @@ export function verifySemanticCandidates(input: VerifyInput): Extraction {
   }
 
   let rejectionQuote: string | null = null;
-  if (candidates.rejectedAlternative) {
-    const span = locateQuote(transcript, candidates.rejectedAlternative.text);
-    if (span) rejectionQuote = transcript.slice(span.start, span.end);
-    else
+  const alt = candidates.rejectedAlternative;
+  if (alt) {
+    const span = locateQuote(transcript, alt.text);
+    const words = span ? transcript.slice(span.start, span.end) : null;
+    if (!span || !words) {
+      rejected.push({ text: alt.text, signal: null, reason: "not_in_transcript", detail: "Quoted words are not in the transcript" });
+    } else if ((alt.action && alt.action !== expectedAction) || !ACTIONS[expectedAction].keywords.test(words)) {
+      // It must be about the runbook action the expert actually rejected.
       rejected.push({
-        text: candidates.rejectedAlternative.text,
+        text: words,
         signal: null,
-        reason: "not_in_transcript",
-        detail: "Quoted words are not in the transcript",
+        reason: "off_topic",
+        detail: `Does not say why ${ACTIONS[expectedAction].label.toLowerCase()} is wrong`,
       });
+    } else {
+      rejectionQuote = words;
+    }
   }
 
   citations.sort((a, b) => a.start - b.start);

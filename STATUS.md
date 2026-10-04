@@ -17,6 +17,7 @@ The full demo works end to end with or without keys: divergence → why (voice) 
 - **Voice retries:** server retries token and TTS calls once on network errors, timeouts and 5xx; never on 4xx. The browser retries the token fetch once only if the request never reached the server.
 - **Signal fix:** with a single running version, both scope signals are now `unknown` (previously "every version failing" was vacuously present).
 - "Confidence" is now labelled **evidence strength**, a heuristic sum of visible factors, not a probability.
+- **Hardening from an adversarial review** (each has a regression test in `tests/domain/review-regressions.test.ts`): quote tracing can never add, drop or skip a negation; hedge words ("maybe", "might", "not sure"...) in a claim's clause block it in both extractors, including causal claims; the cut-off-word cleanup only removes a fragment that the next word restarts, so "normal- only" is not flipped; a "yes, still" counterfactual on a rule's only condition keeps the condition instead of producing an empty rule, and a dropped condition takes its derived guardrail with it; an empty rule never applies in either engine; a model-proposed "why not" must be about the runbook action; model wording is never displayed as the expert's quote.
 
 ## Verified, and how
 
@@ -27,7 +28,7 @@ The full demo works end to end with or without keys: divergence → why (voice) 
 
 ## Tests run
 
-- `npm test`: 11 files, 113 tests, all passing.
+- `npm test`: 12 files, 129 tests, all passing.
 - `npm run lint`: clean.
 - `npm run build`: passes. Routes: `/`, `/api/voice/status`, `/api/voice/scribe-token`, `/api/voice/speak`, `/api/reasoning/extract`.
 

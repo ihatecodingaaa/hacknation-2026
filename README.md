@@ -146,7 +146,7 @@ npm run setup:reasoning-agent       # creates a text-only agent, prints its id
 The microphone needs a secure context: `localhost` or HTTPS. Node 20.9+ runs the app; the test runner needs Node 22.12+.
 
 ```bash
-npm test          # 113 tests: domain, semantic verification, boundary, memory, benchmark, routes, retries
+npm test          # 129 tests: domain, semantic verification, boundary, memory, benchmark, routes, retries
 npm run lint
 npm run build
 ```

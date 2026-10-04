@@ -162,6 +162,7 @@ export function executeDecisionMemory(memory: DecisionMemory, signals: IncidentS
       return g.then.kind === "do_instead" ? { kind: "act", action: g.then.action, via: g.id } : { kind: "defer_to_runbook", via: g.id };
     }
   }
+  if (memory.conditions.length === 0) return { kind: "defer_to_runbook", via: "no_conditions" };
   const results = memory.conditions.map((c) => {
     const states = c.anyOf.map(state);
     return states.some((s) => s === c.expected) ? true : states.some((s) => s === "unknown") ? "unknown" : false;

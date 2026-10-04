@@ -16,8 +16,10 @@ const DISFLUENCIES: RegExp[] = [
   /\b(?:u+h+|u+m+|uhm|erm|hmm+)\b,?\s*/gi,
   // Filler phrases.
   /\b(?:i mean|you know)\b,?\s*/gi,
-  // Words cut off mid-way: "the de- the deployment".
-  /\b[a-z]{1,8}-(?=\s)\s*/gi,
+  // Words cut off mid-way, only when the next word or the one after starts
+  // the same way: "the de- the deployment", "re- restart". "normal- only"
+  // is left alone, so a claim is never flipped by cleaning.
+  /\b([a-z]{1,8})-\s+(?=(?:[a-z']+\s+)?\1)/gi,
   // Immediate repeats: "that, that", "the the". The first copy goes.
   /\b([a-z']+)\b,?\s+(?=\1\b)/gi,
 ];
@@ -75,6 +77,14 @@ function tokens(n: Normalized): Token[] {
 
 /** Up to this many extra transcript words may sit between two quoted words. */
 const MAX_GAP = 3;
+/** Negation words a quote may never add, drop or skip over. */
+const NEGATOR = /^(?:not|no|never|none|nothing|neither|nor|without|cannot|\w+n't)$/;
+/** Words just before a match that would negate it ("did not cause this"). */
+const LOOKBEHIND = 2;
+
+function negations(words: string[]): number {
+  return words.filter((w) => NEGATOR.test(w)).length;
+}
 /** Share of the quote's words that must be found, in order. */
 const MIN_COVERAGE = 0.8;
 
@@ -112,6 +122,10 @@ export function locateQuote(original: string, quote: string): { start: number; e
       pos = found + 1;
     }
     if (first === -1) continue;
+    // Negation must agree exactly: the matched stretch of transcript (plus the
+    // words just before it) carries the same "not"s as the quote, no more, no fewer.
+    const window = hay.slice(Math.max(0, first - LOOKBEHIND), last + 1).map((t) => t.word);
+    if (negations(window) !== negations(needle)) continue;
     const score = matched / needle.length;
     const enough = needle.length <= 2 ? matched === needle.length : score >= MIN_COVERAGE;
     if (enough && (!best || score > best.score)) {
@@ -119,4 +133,20 @@ export function locateQuote(original: string, quote: string): { start: number; e
     }
   }
   return best ? { start: best.start, end: best.end } : null;
+}
+
+/** Words that mark a statement as a guess, not a claim. "I think" is not one: experts say it when sure. */
+const HEDGE = /\b(?:maybe|might|perhaps|possibly|probably|not sure|unsure|i guess|could be|i'?m not certain)\b/i;
+
+/**
+ * Is the claim at this span hedged? Looks at the clause around it: from the
+ * previous clause break (. , ; ! ?) to the end of the span. Deterministic, and
+ * it can only remove claims, never add them.
+ */
+export function isHedged(text: string, span: { start: number; end: number }): string | null {
+  let from = span.start;
+  while (from > 0 && !/[.,;!?]/.test(text[from - 1])) from--;
+  let to = span.end;
+  while (to < text.length && !/[.,;!?]/.test(text[to])) to++;
+  return HEDGE.exec(text.slice(from, to))?.[0] ?? null;
 }

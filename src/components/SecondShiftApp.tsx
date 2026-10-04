@@ -142,10 +142,12 @@ export function SecondShiftApp({
 
   // Async extraction must apply to the session it started from, not a reset one.
   const sessionRef = useRef(session);
+  const viewRef = useRef(view);
   const requestId = useRef(0);
   useEffect(() => {
     sessionRef.current = session;
-  }, [session]);
+    viewRef.current = view;
+  }, [session, view]);
 
   const activeCase = TRAINEE_CASES.find((c) => c.key === caseKey) ?? TRAINEE_CASES[0];
   const traineeSignals = useMemo(() => deriveSignals(activeCase.incident), [activeCase]);
@@ -208,7 +210,8 @@ export function SecondShiftApp({
     if (current.chosen !== started.chosen || current.explanation) return;
     const next = submitExplanation(current, text, source, attempt);
     setSession(next);
-    if (view === "analyst" && next.counterfactual) say("cf", next.counterfactual.question);
+    // The view may have changed while the extractor was working.
+    if (viewRef.current === "analyst" && next.counterfactual) say("cf", next.counterfactual.question);
   }
 
   function onProbe() {
