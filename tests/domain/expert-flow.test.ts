@@ -96,16 +96,14 @@ describe("grounded extraction", () => {
 });
 
 describe("rule v1", () => {
-  it("builds IF/THEN with derived guardrails and visible confidence", () => {
+  it("builds IF/THEN with no guardrails before any boundary is tested", () => {
     const { v1 } = learnFromHero();
     expect(ruleSentence(v1)).toBe(
       "IF Failure began right after a deploy AND Error rate spiked AND Only the new version is failing " +
         "THEN Roll back deployment over Restart service",
     );
-    expect(v1.guardrails.map((g) => g.trigger)).toEqual([
-      [{ signal: "deploy_preceded_failure", state: "absent" }],
-      [{ signal: "all_versions_affected", state: "present" }],
-    ]);
+    // The opposite of a stated reason is not an explicit policy until the counterfactual tests it.
+    expect(v1.guardrails).toEqual([]);
     expect(v1.confidence.score).toBe(0.65);
     expect(v1.confidence.level).toBe("medium");
     expect(v1.evidence[0]).toMatchObject({ kind: "expert_quote", text: SCRIPTED.explanation });

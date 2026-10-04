@@ -34,12 +34,14 @@ describe("trainee transfer", () => {
     expect(evaluateTrainee(v2, traineeCase("A"), "rollback_deploy").verdict).toBe("aligned");
   });
 
-  it("B: guardrail blocks rollback when every version fails", () => {
+  it("B: when every version fails, the rule does not support rolling back", () => {
     const r = evaluateTrainee(v2, traineeCase("B"), "rollback_deploy");
-    expect(r.verdict).toBe("mismatch");
-    expect(r.match.outcome).toBe("guardrail");
-    expect(r.match.firedGuardrail?.id).toBe("g-new_version_only");
+    expect(r.verdict).toBe("outside_rule");
+    expect(r.match.outcome).toBe("not_applicable");
+    expect(r.match.firedGuardrail).toBeNull();
     expect(r.match.recommended).toBeNull();
+    expect(r.headline).toBe("Roll back deployment is not supported by the expert's rule");
+    expect(r.explanation).toContain("only the new version is failing");
   });
 
   it("B: does not grade choices the expert never taught", () => {

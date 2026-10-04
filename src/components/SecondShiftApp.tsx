@@ -7,6 +7,7 @@ import { EXPERT_INCIDENT, SCRIPTED, TRAINEE_CASES, type TraineeCase } from "@/do
 import type { SemanticAttempt } from "@/domain/semantic";
 import {
   chooseAction,
+  reopenCounterfactual,
   resolveStance,
   retryExplanation,
   startSession,
@@ -227,6 +228,10 @@ export function SecondShiftApp({
     setSession(resolveStance(session, stance, alternative));
   }
 
+  function onReopenCounterfactual() {
+    setSession(reopenCounterfactual(session));
+  }
+
   function onReplay(which: keyof Speech) {
     const text = which === "why" ? session.divergence?.question : session.counterfactual?.question;
     if (text) say(which, text);
@@ -378,6 +383,7 @@ export function SecondShiftApp({
           onProbe={onProbe}
           onAnswer={onAnswer}
           onResolveStance={onResolveStance}
+          onReopenCounterfactual={onReopenCounterfactual}
           onLoadScripted={loadScripted}
           map={map}
           cases={TRAINEE_CASES}
@@ -417,6 +423,7 @@ export function SecondShiftApp({
                 onRetryExplain={() => setSession(retryExplanation(session))}
                 onAnswer={onAnswer}
                 onResolveStance={onResolveStance}
+                onReopenCounterfactual={onReopenCounterfactual}
                 onReplay={onReplay}
                 onGoTrainee={() => setMode("trainee")}
               />

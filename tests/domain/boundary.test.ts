@@ -31,22 +31,16 @@ describe("decision boundary map", () => {
     expect(cell.runbook).toBe("restart_service");
   });
 
-  it("flipping version scope means every version is failing: the rule stands down", () => {
+  it("flipping an untested condition leaves the rule silent: no policy is invented", () => {
     const cell = axis(map, "c-new_version_only").flipped;
     expect(cell.scenario).toBe("every version was failing");
     expect(cell.changes.map((c) => [c.signal, c.to])).toEqual([
       ["new_version_only", "absent"],
       ["all_versions_affected", "present"],
     ]);
-    expect(cell.outcome).toMatchObject({ kind: "stand_down", guardrailId: "g-new_version_only", introducedIn: 1 });
+    expect(cell.outcome).toEqual({ kind: "silent" });
     expect(cell.before).toBeNull();
-  });
-
-  it("flipping deploy timing stands down on the timing guardrail", () => {
-    expect(axis(map, "c-deploy_preceded_failure").flipped.outcome).toMatchObject({
-      kind: "stand_down",
-      guardrailId: "g-deploy_preceded_failure",
-    });
+    expect(axis(map, "c-deploy_preceded_failure").flipped.outcome).toEqual({ kind: "silent" });
   });
 
   it("missing evidence on any condition means abstain, never a guess", () => {
@@ -71,10 +65,10 @@ describe("placing a new incident on the map", () => {
     expect(p.runbook).toBe("restart_service");
   });
 
-  it("B crosses the scope boundary", () => {
+  it("B leaves the region on version scope: the rule is silent there", () => {
     const p = placeIncident(v2, deriveSignals(traineeCase("B")));
     expect(p.positions["c-new_version_only"]).toBe("flipped");
-    expect(p.outcome.kind).toBe("stand_down");
+    expect(p.outcome.kind).toBe("silent");
     expect(p.decisiveAxes).toEqual(["c-new_version_only"]);
   });
 

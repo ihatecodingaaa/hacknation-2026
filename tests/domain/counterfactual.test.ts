@@ -41,10 +41,13 @@ describe("rule update", () => {
     expect(v2.version).toBe(2);
     expect(v2.conditions.find((c) => c.id === "c-error_spike")?.necessity).toBe("confirmed");
     const g = v2.guardrails.find((x) => x.origin === "counterfactual");
+    // Scoped to what the question held constant: the deploy. Version scope is
+    // left out because it is measured from error rates, which the question removed.
     expect(g).toMatchObject({
       trigger: [
         { signal: "latency_up", state: "present" },
         { signal: "error_spike", state: "absent" },
+        { signal: "deploy_preceded_failure", state: "present" },
       ],
       insteadAction: "investigate",
     });

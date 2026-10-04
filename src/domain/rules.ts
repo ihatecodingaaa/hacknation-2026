@@ -24,23 +24,10 @@ const CAP_REASON = "Learned from one incident. A second confirming case is neede
 
 const CATEGORY_ORDER: SignalCategory[] = ["change", "symptom", "scope", "resource"];
 
-/**
- * Guardrails that follow from a condition. If the expert's reason was
- * "only the new version is failing", then "every version is failing" is an
- * explicit case where the rule must not fire.
- */
-const DERIVED_GUARDRAILS: Partial<
-  Record<SignalId, { trigger: Guardrail["trigger"]; description: string }>
-> = {
-  new_version_only: {
-    trigger: [{ signal: "all_versions_affected", state: "present" }],
-    description: "Errors hit every version, so the new release is not the only suspect.",
-  },
-  deploy_preceded_failure: {
-    trigger: [{ signal: "deploy_preceded_failure", state: "absent" }],
-    description: "The failure did not start right after a deploy, so the timing does not implicate a release.",
-  },
-};
+// Rule v1 has conditions only. The opposite of a stated reason is NOT turned
+// into a guardrail: until the counterfactual tests it, "this reason does not
+// hold" means the rule is silent (the runbook applies), not an explicit policy
+// the expert never gave. Guardrails come from the expert's counterfactual answer.
 
 export function computeConfidence(factors: ConfidenceFactor[]): Confidence {
   const raw = factors.reduce((sum, f) => sum + f.delta, 0);
@@ -106,19 +93,6 @@ export function buildRule(input: BuildRuleInput): DecisionRule | null {
   });
 
   const guardrails: Guardrail[] = [];
-  for (const cond of conditions) {
-    const derived = DERIVED_GUARDRAILS[cond.anyOf[0]];
-    if (!derived || cond.expected !== "present") continue;
-    guardrails.push({
-      id: `g-${cond.anyOf[0]}`,
-      description: derived.description,
-      trigger: derived.trigger,
-      insteadAction: null,
-      origin: "derived",
-      evidenceIds: cond.evidenceIds,
-      introducedIn: 1,
-    });
-  }
 
   const contradicted = extraction.citations.filter((c) => !c.grounded && c.observed !== "unknown").length;
   const unverifiable = extraction.citations.filter((c) => !c.grounded && c.observed === "unknown").length;

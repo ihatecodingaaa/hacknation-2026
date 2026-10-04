@@ -214,7 +214,10 @@ export function placeIncident(rule: DecisionRule, signals: IncidentSignal[]): Pl
   let decisiveAxes: string[] = [];
   if (match.firedGuardrail) {
     const triggers = new Set(match.firedGuardrail.trigger.map((t) => t.signal));
+    // Context signals in the trigger hold on this incident; only the axes it
+    // actually left are the reason for the outcome.
     decisiveAxes = rule.conditions
+      .filter((c) => positions[c.id] !== "inside")
       .filter((c) => c.anyOf.some((id) => triggers.has(id) || (COUPLED[id] && triggers.has(COUPLED[id]!))))
       .map((c) => c.id);
   } else if (outcome.kind !== "apply") {

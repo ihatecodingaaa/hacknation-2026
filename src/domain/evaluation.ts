@@ -154,6 +154,17 @@ export function evaluateTrainee(
   const failed = rule.conditions
     .filter((c) => match.conditions.find((m) => m.conditionId === c.id)?.met === false)
     .map((c) => conditionLabel(c).toLowerCase());
+  if (traineeAction === rule.action) {
+    return {
+      ...base,
+      verdict: "outside_rule",
+      headline: `${label(rule.action)} is not supported by the expert's rule`,
+      explanation:
+        `The expert's rule for ${ACTIONS[rule.action].gerund} needs ${failed.join("; ")}, and ${failed.length === 1 ? "that does" : "those do"} not hold here. ` +
+        `What was learned does not support this choice. The expert gave no judgment for this situation, so the alternatives are not graded either.`,
+      provenance: evidenceFor(rule, ["ev-quote"]),
+    };
+  }
   return {
     ...base,
     verdict: "outside_rule",

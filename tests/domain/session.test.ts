@@ -54,6 +54,8 @@ describe("expert session", () => {
     let s = chooseAction(startSession(EXPERT_INCIDENT), "rollback_deploy");
     s = submitExplanation(s, SCRIPTED.explanation, "typed");
     s = submitCounterfactualAnswer(s, SCRIPTED.counterfactualAnswer, "typed");
+    expect(s.answer).toBeNull();
+    s = resolveStance(s, s.draft!.stance!, s.draft!.alternative);
     expect(s.answer?.stance).toBe("switch");
     s = resolveStance(s, "still", null);
     expect(s.rule?.version).toBe(2);

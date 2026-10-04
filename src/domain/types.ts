@@ -278,6 +278,8 @@ export interface CounterfactualAnswer {
   stance: CounterfactualStance;
   /** Action the expert would take instead, when stance is "switch". */
   alternative: ActionId | null;
+  /** Who settled the reading: the expert confirmed it, or a scripted demo answer was applied as is. */
+  confirmedBy: "expert" | "scripted";
 }
 
 export interface TraineeDecision {

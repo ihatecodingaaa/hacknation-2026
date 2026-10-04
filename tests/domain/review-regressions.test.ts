@@ -104,13 +104,13 @@ describe("rules always rest on evidence", () => {
     expect(executeDecisionMemory(compileDecisionMemory(v2), {}).kind).toBe("abstain");
   });
 
-  it("dropping a condition also drops the guardrail derived from it", () => {
+  it("dropping a condition leaves no policy behind for it", () => {
     const { v2 } = learnFromHero({
       explanation: "It started right after the deploy and only the new version is affected.",
       answer: "Yes, I'd still roll back.",
     });
     expect(v2.conditions.map((c) => c.id)).toEqual(["c-deploy_preceded_failure"]);
-    expect(v2.guardrails.map((g) => g.id)).toEqual(["g-deploy_preceded_failure"]);
+    expect(v2.guardrails).toEqual([]);
   });
 
   it("an empty rule never applies, in either engine", () => {

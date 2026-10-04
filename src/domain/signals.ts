@@ -94,6 +94,16 @@ export const COUPLED: Partial<Record<SignalId, SignalId>> = {
   all_versions_affected: "new_version_only",
 };
 
+/**
+ * Signals whose meaning depends on another one: version scope is measured from
+ * per-version error rates, so "only the new version is failing" says nothing
+ * once the error rate is normal. Used to decide what a counterfactual held.
+ */
+export const DEPENDS_ON: Partial<Record<SignalId, SignalId[]>> = {
+  new_version_only: ["error_spike"],
+  all_versions_affected: ["error_spike"],
+};
+
 export const SIGNAL_ORDER: SignalId[] = [
   "deploy_preceded_failure",
   "error_spike",

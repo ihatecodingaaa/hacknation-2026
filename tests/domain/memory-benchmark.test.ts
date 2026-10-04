@@ -81,7 +81,9 @@ describe("decision memory artifact", () => {
     expect(text).toContain("Decision memory RULE-2041 v2");
     expect(text).toContain("(heuristic, capped at 0.85)");
     expect(text.indexOf("Check these first")).toBeLessThan(text.indexOf("Otherwise, when ALL"));
-    expect(text).toContain("If latency increased and the error rate stayed normal: hold and investigate.");
+    expect(text).toContain(
+      "If latency increased and the error rate stayed normal and the failure started right after a deploy: hold and investigate.",
+    );
     expect(text).toContain('expert: "only the new version"');
     expect(text).toContain("do not act on this rule. Get the evidence first.");
   });

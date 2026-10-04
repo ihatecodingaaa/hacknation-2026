@@ -148,6 +148,12 @@ export function RulePanel({ rule }: { rule: DecisionRule | null }) {
       </Section>
 
       <Section title="Guardrails · when not to apply">
+        {rule.guardrails.length === 0 && (
+          <p className="text-[12px] leading-snug text-muted">
+            None yet. Where a stated reason does not hold, the rule is silent and the runbook applies. A guardrail is added only
+            when the expert&apos;s confirmed counterfactual answer sets one.
+          </p>
+        )}
         <ul className="space-y-2">
           {rule.guardrails.map((g) => (
             <GuardrailRow key={g.id} g={g} changed={changed.has(g.id)} version={rule.version} />

@@ -252,7 +252,8 @@ export function MemoryPanel({ json, memory, large = false }: { json: string; mem
         <Button onClick={download}>Download .json</Button>
       </div>
       <div className="mt-2 font-mono text-[11px] text-muted">
-        {memory.schema} · {memory.ruleId} v{memory.version} · {memory.conditions.length} conditions · {memory.guardrails.length} guardrails ·
+        {memory.schema} · {memory.ruleId} v{memory.version} · {memory.conditions.length} condition{memory.conditions.length === 1 ? "" : "s"} · {memory.guardrails.length} guardrail
+        {memory.guardrails.length === 1 ? "" : "s"} ·
         schema-validated
       </div>
       <pre

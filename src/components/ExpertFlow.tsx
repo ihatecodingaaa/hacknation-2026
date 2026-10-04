@@ -9,6 +9,7 @@ import { SIGNALS } from "@/domain/signals";
 import type { ActionId, CounterfactualStance, SignalState, TranscriptSource } from "@/domain/types";
 import { DecisionBoundaryMap } from "./boundary/DecisionBoundaryMap";
 import { ClaimVerification } from "./ClaimVerification";
+import { CounterfactualReview } from "./CounterfactualReview";
 import { VoiceAnswer } from "./VoiceAnswer";
 import { Button, Label, SourceTag, Tag, cx } from "./ui";
 
@@ -114,6 +115,7 @@ export function ExpertFlow({
   onRetryExplain,
   onAnswer,
   onResolveStance,
+  onReopenCounterfactual,
   onReplay,
   onGoTrainee,
 }: {
@@ -127,10 +129,10 @@ export function ExpertFlow({
   onRetryExplain: () => void;
   onAnswer: (text: string, source: TranscriptSource) => void;
   onResolveStance: (stance: CounterfactualStance, alternative: ActionId | null) => void;
+  onReopenCounterfactual: () => void;
   onReplay: (which: "why" | "cf") => void;
   onGoTrainee: () => void;
 }) {
-  const [altPick, setAltPick] = useState<ActionId>("investigate");
   const exp = ACTIONS[s.expected.action];
   const diverged = Boolean(s.divergence);
   const ruleAction = s.ruleV1 ? ACTIONS[s.ruleV1.action] : null;
@@ -314,67 +316,19 @@ export function ExpertFlow({
               key={`cf-${s.ruleV1.version}-${s.explanation?.text}`}
               voiceConfigured={voiceConfigured}
               scripted={[{ label: "Use scripted answer", text: SCRIPTED.counterfactualAnswer }]}
-              submitLabel="Update the rule"
+              submitLabel="Submit answer"
               placeholder="e.g. No. I would investigate first, latency alone is not enough evidence…"
               onSubmit={onAnswer}
             />
           ) : (
-            <div className="space-y-2">
-              <div className="border-l-2 border-line-strong pl-2.5">
-                <p className="text-[13px] italic text-text">&ldquo;{s.draft.text}&rdquo;</p>
-                <div className="mt-1">
-                  <SourceTag source={s.draft.source} />
-                </div>
-              </div>
-              {s.answer ? (
-                <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
-                  <span className="text-muted">Read as:</span>
-                  {s.answer.stance === "switch" ? (
-                    <Tag tone="diverge">no, would not {ruleAction.verb}</Tag>
-                  ) : (
-                    <Tag tone="rule">yes, would still {ruleAction.verb}</Tag>
-                  )}
-                  {s.answer.alternative && <Tag tone="expert">instead: {ACTIONS[s.answer.alternative].label}</Tag>}
-                  <Button
-                    tone="ghost"
-                    onClick={() =>
-                      onResolveStance(
-                        s.answer?.stance === "switch" ? "still" : "switch",
-                        s.answer?.stance === "switch" ? null : (s.draft?.alternative ?? null),
-                      )
-                    }
-                  >
-                    Misread? Flip it
-                  </Button>
-                </div>
-              ) : (
-                <div className="rounded-[3px] border border-dashed border-unknown/70 bg-unknown/5 px-3 py-2.5">
-                  <div className="text-[12.5px] text-text">
-                    SecondShift could not tell whether that is a yes or a no, so it will not guess. Expert, which is it?
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Button tone="rule" onClick={() => onResolveStance("still", null)}>
-                      Yes, still {ruleAction.verb}
-                    </Button>
-                    <span className="text-faint">or</span>
-                    <Button tone="primary" onClick={() => onResolveStance("switch", altPick)}>
-                      No, I would
-                    </Button>
-                    <select
-                      value={altPick}
-                      onChange={(e) => setAltPick(e.target.value as ActionId)}
-                      className="rounded-[3px] border border-line-strong bg-bg px-1.5 py-1 text-[12px] text-text"
-                    >
-                      {ACTION_ORDER.filter((id) => id !== s.ruleV1?.action).map((id) => (
-                        <option key={id} value={id}>
-                          {ACTIONS[id].label.toLowerCase()}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              )}
-            </div>
+            <CounterfactualReview
+              key={`${s.draft.source}:${s.draft.text}`}
+              draft={s.draft}
+              answer={s.answer}
+              ruleAction={s.ruleV1.action}
+              onConfirm={onResolveStance}
+              onReopen={onReopenCounterfactual}
+            />
           )}
         </Step>
       )}

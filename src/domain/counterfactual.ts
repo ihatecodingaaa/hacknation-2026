@@ -1,5 +1,5 @@
 import { ACTIONS, ACTION_ORDER } from "./actions";
-import { SIGNALS, signalState } from "./signals";
+import { DEPENDS_ON, SIGNALS, signalState } from "./signals";
 import { computeConfidence } from "./rules";
 import type {
   ActionId,
@@ -93,32 +93,71 @@ const STILL_LEAD = /^\s*(yes\b|yeah\b|yep\b|yup\b|still\b|definitely\b|absolutel
 const SWITCH_ANY = /\b(wouldn'?t|would\s+not|won'?t|not\s+enough)\b/i;
 const STILL_ANY = /\b(would\s+still|i'?d\s+still|still\s+roll|still\s+do)\b/i;
 
-/** Read the expert's stance from the answer. null = unclear, ask the expert to pick. */
+/** Read the expert's stance, and the words it was read from. null = unclear, ask the expert to pick. */
+export function readStance(text: string): { stance: CounterfactualStance | null; cue: string | null } {
+  const order: [RegExp, CounterfactualStance][] = [
+    [SWITCH_LEAD, "switch"],
+    [STILL_LEAD, "still"],
+    [STILL_ANY, "still"],
+    [SWITCH_ANY, "switch"],
+  ];
+  for (const [re, stance] of order) {
+    const m = re.exec(text);
+    if (m) return { stance, cue: m[0].trim() };
+  }
+  return { stance: null, cue: null };
+}
+
 export function classifyStance(text: string): CounterfactualStance | null {
-  if (SWITCH_LEAD.test(text)) return "switch";
-  if (STILL_LEAD.test(text)) return "still";
-  if (STILL_ANY.test(text)) return "still";
-  if (SWITCH_ANY.test(text)) return "switch";
-  return null;
+  return readStance(text).stance;
 }
 
-/** First action mentioned in the answer other than the rule's own action. */
+/** First action mentioned in the answer other than the rule's own action, and the words that named it. */
+export function findAlternative(text: string, ruleAction: ActionId): { action: ActionId | null; cue: string | null } {
+  for (const id of ACTION_ORDER) {
+    if (id === ruleAction) continue;
+    const m = ACTIONS[id].keywords.exec(text);
+    if (m) return { action: id, cue: m[0] };
+  }
+  return { action: null, cue: null };
+}
+
 export function detectAlternative(text: string, ruleAction: ActionId): ActionId | null {
-  return ACTION_ORDER.find((id) => id !== ruleAction && ACTIONS[id].keywords.test(text)) ?? null;
+  return findAlternative(text, ruleAction).action;
 }
 
-export function interpretAnswer(
-  text: string,
-  source: TranscriptSource,
-  ruleAction: ActionId,
-): { stance: CounterfactualStance | null; alternative: ActionId | null; text: string; source: TranscriptSource } {
-  const stance = classifyStance(text);
-  return {
-    text,
-    source,
-    stance,
-    alternative: stance === "switch" ? detectAlternative(text, ruleAction) : null,
-  };
+export interface AnswerReading {
+  text: string;
+  source: TranscriptSource;
+  stance: CounterfactualStance | null;
+  alternative: ActionId | null;
+  /** The words each part of the reading came from, shown to the expert. */
+  cues: { stance: string | null; alternative: string | null };
+  /** Why the expert should look closely before confirming. */
+  concerns: string[];
+}
+
+/**
+ * A draft reading of the counterfactual answer. It never changes the rule by
+ * itself: live and typed answers wait for the expert to confirm or correct it.
+ */
+export function interpretAnswer(text: string, source: TranscriptSource, ruleAction: ActionId): AnswerReading {
+  const { stance, cue } = readStance(text);
+  const alt = stance === "switch" ? findAlternative(text, ruleAction) : { action: null, cue: null };
+  const concerns: string[] = [];
+  if (!stance) concerns.push("Could not tell whether this is a yes or a no.");
+  if (stance && cue && cue.split(/\s+/).length === 1) {
+    concerns.push(`The stance rests on a single word ("${cue}"). Speech recognition can mishear the rest.`);
+  }
+  if (stance === "switch" && !alt.action) concerns.push("No alternative action was named. Pick what the expert would do instead.");
+  return { text, source, stance, alternative: alt.action, cues: { stance: cue, alternative: alt.cue }, concerns };
+}
+
+/** The rule's other conditions that the counterfactual kept constant. */
+export function heldContext(rule: DecisionRule, pivot: SignalId): Guardrail["trigger"] {
+  return rule.conditions
+    .filter((c) => c.anyOf.length === 1 && c.anyOf[0] !== pivot && !(DEPENDS_ON[c.anyOf[0]] ?? []).includes(pivot))
+    .map((c) => ({ signal: c.anyOf[0], state: c.expected }));
 }
 
 /** Produce the next rule version from the counterfactual answer. */
@@ -127,10 +166,16 @@ export function applyCounterfactual(
   cf: CounterfactualQuestion,
   answer: CounterfactualAnswer,
 ): DecisionRule {
+  const reading =
+    answer.stance === "switch"
+      ? `would not ${ACTIONS[rule.action].verb}${answer.alternative ? `; would ${ACTIONS[answer.alternative].verb} instead` : ""}`
+      : `would still ${ACTIONS[rule.action].verb}`;
   const cfEvidence: Evidence = {
     id: "ev-cf",
     kind: "counterfactual",
-    text: `Q: ${cf.question}\nA: ${answer.text}`,
+    text:
+      `Q: ${cf.question}\nA: ${answer.text}\n` +
+      `Read as: ${reading} (${answer.confirmedBy === "expert" ? "confirmed by the expert" : "scripted demo answer, applied as written"})`,
     source: answer.source,
     incidentId: rule.sourceIncidentId,
   };
@@ -141,27 +186,31 @@ export function applyCounterfactual(
   const baseFactors = rule.confidence.factors.filter((f) => !f.label.startsWith("Counterfactual"));
 
   if (answer.stance === "switch") {
+    // A "no" without what to do instead would be an actionless policy the
+    // expert never stated. The session asks for the alternative first.
+    if (!answer.alternative) return rule;
     const conditions: RuleCondition[] = rule.conditions.map((c) =>
       c.id === pivotId
         ? { ...c, necessity: "confirmed", testedIn: version, evidenceIds: [...c.evidenceIds, cfEvidence.id] }
         : c,
     );
 
-    const trigger: Guardrail["trigger"] = cf.confounder
-      ? [
-          { signal: cf.confounder, state: "present" },
-          { signal: cf.pivot, state: "absent" },
-        ]
-      : [{ signal: cf.pivot, state: "absent" }];
+    // The expert answered about one change with everything else held. The
+    // guardrail fires only in that situation: the probed signal flipped, the
+    // confounder present, and the rule's other conditions still holding
+    // (except those that cannot hold once the probed signal is gone).
+    const trigger: Guardrail["trigger"] = [
+      ...(cf.confounder ? [{ signal: cf.confounder, state: "present" as const }] : []),
+      { signal: cf.pivot, state: "absent" },
+      ...heldContext(rule, cf.pivot),
+    ];
     const alt = answer.alternative;
     const when = cf.confounder
       ? `${capitalize(SIGNALS[cf.confounder].presentPhrase)} but ${SIGNALS[cf.pivot].absentPhrase}`
       : capitalize(SIGNALS[cf.pivot].absentPhrase);
     const guardrail: Guardrail = {
       id: `g-cf-${cf.pivot}`,
-      description: alt
-        ? `${when}: ${ACTIONS[alt].verb} instead of ${ACTIONS[rule.action].gerund}.`
-        : `${when}: do not ${ACTIONS[rule.action].verb}.`,
+      description: `${when}: ${ACTIONS[alt].verb} instead of ${ACTIONS[rule.action].gerund}.`,
       trigger,
       insteadAction: alt,
       origin: "counterfactual",
@@ -229,15 +278,10 @@ export function applyCounterfactual(
       )
     : rule.conditions.filter((c) => c.id !== pivotId);
 
-  // A dropped condition takes its derived guardrail with it: the expert just
-  // said the rule holds without it.
-  const guardrails = cf.confounder ? rule.guardrails : rule.guardrails.filter((g) => !(g.origin === "derived" && g.id === `g-${cf.pivot}`));
-
   return {
     ...rule,
     version,
     conditions,
-    guardrails,
     evidence,
     confidence: computeConfidence([
       ...baseFactors,

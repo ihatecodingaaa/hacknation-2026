@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { ACTIONS, ACTION_ORDER } from "@/domain/actions";
 import type { BoundaryMapData, Placement } from "@/domain/boundary";
 import type { PolicyResult } from "@/domain/benchmark";
@@ -12,12 +12,13 @@ import { SIGNALS, signalById } from "@/domain/signals";
 import type { ActionId, CounterfactualStance, EvaluationResult, IncidentSignal, IncidentState, TranscriptSource } from "@/domain/types";
 import { DecisionBoundaryMap } from "../boundary/DecisionBoundaryMap";
 import { ClaimVerification } from "../ClaimVerification";
+import { CounterfactualReview } from "../CounterfactualReview";
 import { ErrorChart } from "../ErrorChart";
 import { BenchmarkPanel, MemoryPanel } from "../Evaluation";
 import type { SpeechStatus } from "../ExpertFlow";
 import { EvidenceItem } from "../RulePanel";
 import { VoiceAnswer } from "../VoiceAnswer";
-import { Button, Label, SourceTag, Tag, cx } from "../ui";
+import { Button, Label, Tag, cx } from "../ui";
 
 export type Chapter = "before" | "surprise" | "why" | "boundary" | "transfer" | "memory";
 
@@ -52,6 +53,7 @@ export interface JudgeViewProps {
   onProbe: () => void;
   onAnswer: (text: string, source: TranscriptSource) => void;
   onResolveStance: (stance: CounterfactualStance, alternative: ActionId | null) => void;
+  onReopenCounterfactual: () => void;
   onLoadScripted: () => void;
   map: BoundaryMapData | null;
   cases: TraineeCase[];
@@ -429,11 +431,9 @@ function ChapterWhy(p: JudgeViewProps) {
 
 function ChapterBoundary(p: JudgeViewProps) {
   const s = p.session;
-  const [altPick, setAltPick] = useState<ActionId>("investigate");
   const cf = s.counterfactual;
   const v1 = s.ruleV1!;
   const rule = s.rule ?? v1;
-  const ruleAction = ACTIONS[v1.action];
   return (
     <Chapter
       kicker="04 · Learned boundary"
@@ -448,7 +448,7 @@ function ChapterBoundary(p: JudgeViewProps) {
             <Label className="!text-expert">Counterfactual probe · ElevenLabs voice</Label>
             <p className="mt-2 text-[20px] font-medium leading-snug text-text">&ldquo;{cf.question}&rdquo;</p>
             <SpeechNote status={p.speech.cf} onReplay={() => p.onReplay("cf")} />
-            <p className="mt-2 text-[13px] leading-relaxed text-muted">{cf.rationale}</p>
+            {!s.draft && <p className="mt-2 text-[13px] leading-relaxed text-muted">{cf.rationale}</p>}
             <div className="mt-3 border border-line-strong bg-raised px-3 py-2">
               <Label>Hypothetical vs {s.incident.id}</Label>
               <ul className="mt-1 space-y-0.5 font-mono text-[12px]">
@@ -469,40 +469,23 @@ function ChapterBoundary(p: JudgeViewProps) {
                   key={`judge-cf-${v1.version}-${s.explanation?.text}`}
                   voiceConfigured={p.voiceConfigured}
                   scripted={[{ label: "Use scripted answer", text: SCRIPTED.counterfactualAnswer }]}
-                  submitLabel="Update the rule"
+                  submitLabel="Submit answer"
                   placeholder="e.g. No. I would investigate first…"
                   onSubmit={p.onAnswer}
                 />
               ) : (
                 <div className="space-y-3">
-                  <div className="border-l-2 border-line-strong pl-3">
-                    <p className="text-[15px] italic text-text">&ldquo;{s.draft.text}&rdquo;</p>
-                    <div className="mt-1">
-                      <SourceTag source={s.draft.source} />
-                    </div>
-                  </div>
-                  {s.answer ? (
+                  <CounterfactualReview
+                    key={`${s.draft.source}:${s.draft.text}`}
+                    draft={s.draft}
+                    answer={s.answer}
+                    ruleAction={v1.action}
+                    onConfirm={p.onResolveStance}
+                    onReopen={p.onReopenCounterfactual}
+                    large
+                  />
+                  {s.answer && (
                     <>
-                      <div className="flex flex-wrap items-center gap-2 text-[13px]">
-                        <span className="text-muted">Read as:</span>
-                        {s.answer.stance === "switch" ? (
-                          <Tag tone="diverge">no, would not {ruleAction.verb}</Tag>
-                        ) : (
-                          <Tag tone="rule">yes, would still {ruleAction.verb}</Tag>
-                        )}
-                        {s.answer.alternative && <Tag tone="expert">instead: {ACTIONS[s.answer.alternative].label}</Tag>}
-                        <Button
-                          tone="ghost"
-                          onClick={() =>
-                            p.onResolveStance(
-                              s.answer?.stance === "switch" ? "still" : "switch",
-                              s.answer?.stance === "switch" ? null : (s.draft?.alternative ?? null),
-                            )
-                          }
-                        >
-                          Misread? Flip it
-                        </Button>
-                      </div>
                       <div className="border border-rule/60 bg-rule/[0.07] px-3 py-3">
                         <div className="font-mono text-[14px] text-text">
                           Rule v{v1.version} → <span className="text-rule">v{rule.version}</span>
@@ -515,30 +498,6 @@ function ChapterBoundary(p: JudgeViewProps) {
                       </div>
                       <Next onClick={() => p.onChapter("transfer")}>Test on incidents the expert never saw</Next>
                     </>
-                  ) : (
-                    <div className="border border-dashed border-unknown/70 bg-unknown/5 px-3 py-3">
-                      <p className="text-[14px] text-text">SecondShift cannot tell if that is a yes or a no, so it will not guess. Expert, which is it?</p>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <Button tone="rule" onClick={() => p.onResolveStance("still", null)}>
-                          Yes, still {ruleAction.verb}
-                        </Button>
-                        <Button tone="primary" onClick={() => p.onResolveStance("switch", altPick)}>
-                          No, I would
-                        </Button>
-                        <select
-                          value={altPick}
-                          onChange={(e) => setAltPick(e.target.value as ActionId)}
-                          aria-label="Alternative action"
-                          className="rounded-[3px] border border-line-strong bg-bg px-1.5 py-1 text-[13px] text-text"
-                        >
-                          {ACTION_ORDER.filter((id) => id !== v1.action).map((id) => (
-                            <option key={id} value={id}>
-                              {ACTIONS[id].label.toLowerCase()}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
                   )}
                 </div>
               )}
@@ -695,6 +654,7 @@ function NeedsRule({ onLoadScripted, onChapter }: { onLoadScripted: () => void; 
 
 export function JudgeView(p: JudgeViewProps) {
   const open = chapterUnlocked(p.chapter, p.session);
+
   let body: ReactNode;
   if (!open) body = <NeedsRule onLoadScripted={p.onLoadScripted} onChapter={p.onChapter} />;
   else if (p.chapter === "before") body = <ChapterBefore {...p} />;

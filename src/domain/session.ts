@@ -1,4 +1,4 @@
-import { applyCounterfactual, generateCounterfactual, interpretAnswer } from "./counterfactual";
+import { applyCounterfactual, generateCounterfactual, interpretAnswer, type AnswerReading } from "./counterfactual";
 import { detectDivergence } from "./divergence";
 import { expectedAction } from "./playbook";
 import { buildRule } from "./rules";
@@ -22,11 +22,16 @@ import type {
 // The expert half of the demo as a sequence of pure state transitions.
 // The UI calls these; tests call the same functions.
 
-export interface CounterfactualDraft {
-  text: string;
-  source: TranscriptSource;
-  stance: CounterfactualStance | null;
-  alternative: ActionId | null;
+/** The draft reading of a counterfactual answer, before it changes the rule. */
+export type CounterfactualDraft = AnswerReading;
+
+/**
+ * Only the scripted demo answer may update the rule without the expert
+ * confirming the reading. Live voice can be misheard; typed text is read by
+ * the same simple parser. Both wait for confirmation.
+ */
+export function needsConfirmation(source: TranscriptSource): boolean {
+  return source !== "scripted";
 }
 
 export interface ExpertSession {
@@ -110,25 +115,35 @@ export function retryExplanation(s: ExpertSession): ExpertSession {
   return { ...s, explanation: null, extraction: null, ruleV1: null, rule: null, counterfactual: null, draft: null, answer: null };
 }
 
+/**
+ * Record the counterfactual answer as a draft reading. The scripted demo
+ * answer is applied straight away when the reading is complete; anything
+ * else waits for confirmCounterfactual().
+ */
 export function submitCounterfactualAnswer(s: ExpertSession, text: string, source: TranscriptSource): ExpertSession {
   if (!s.ruleV1 || !s.counterfactual) return s;
   const draft = interpretAnswer(text, source, s.ruleV1.action);
-  if (!draft.stance) return { ...s, draft, answer: null, rule: s.ruleV1 };
-  return resolveStance({ ...s, draft }, draft.stance, draft.alternative);
+  const pending = { ...s, draft, answer: null, rule: s.ruleV1 };
+  const complete = draft.stance === "still" || (draft.stance === "switch" && draft.alternative !== null);
+  if (needsConfirmation(source) || !complete) return pending;
+  return applyReading(pending, draft.stance!, draft.alternative, "scripted");
 }
 
-/** Apply (or re-apply with a correction) the expert's stance. Always from v1. */
-export function resolveStance(
+function applyReading(
   s: ExpertSession,
   stance: CounterfactualStance,
   alternative: ActionId | null,
+  confirmedBy: CounterfactualAnswer["confirmedBy"],
 ): ExpertSession {
   if (!s.ruleV1 || !s.counterfactual || !s.draft) return s;
+  // Never an actionless "no": the expert has to say what they would do instead.
+  if (stance === "switch" && !alternative) return s;
   const answer: CounterfactualAnswer = {
     text: s.draft.text,
     source: s.draft.source,
     stance,
     alternative: stance === "switch" ? alternative : null,
+    confirmedBy,
   };
   return {
     ...s,
@@ -136,4 +151,26 @@ export function resolveStance(
     answer,
     rule: applyCounterfactual(s.ruleV1, s.counterfactual, answer),
   };
+}
+
+/**
+ * The expert confirms (or corrects) the reading. Always applied from rule v1,
+ * so a correction replaces the previous v2 instead of stacking on it.
+ * A "switch" without an alternative is refused.
+ */
+export function confirmCounterfactual(
+  s: ExpertSession,
+  stance: CounterfactualStance,
+  alternative: ActionId | null,
+): ExpertSession {
+  return applyReading(s, stance, alternative, "expert");
+}
+
+/** Kept for existing callers: resolving the stance is confirming it. */
+export const resolveStance = confirmCounterfactual;
+
+/** Undo a confirmed reading so the expert can correct it. Back to rule v1, the draft kept. */
+export function reopenCounterfactual(s: ExpertSession): ExpertSession {
+  if (!s.draft || !s.ruleV1) return s;
+  return { ...s, answer: null, rule: s.ruleV1 };
 }
