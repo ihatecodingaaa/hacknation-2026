@@ -41,9 +41,9 @@ expert's voice ─► Scribe v2 Realtime ─► transcript (verbatim, tagged wit
              └────────────────────────────┬─────────────────────────────┘
                                           ▼
                               deterministic verifier DECIDES
-                  1. quoted words are really in the transcript
-                  2. names an observable signal   3. stated without hedging
-                  4. the telemetry agrees
+                  1. provenance: quoted words are really in the transcript
+                  2. quote support: those words say what the claim says
+                  3. not hedged      4. the telemetry agrees
                                           ▼
                  rule v1: only supported claims; no guardrails yet
                                           ▼
@@ -59,7 +59,7 @@ expert's voice ─► Scribe v2 Realtime ─► transcript (verbatim, tagged wit
          run the real matcher)   expert's words            ─► agent-context text
 ```
 
-**The model proposes; code decides.** A language model is good at reading messy speech ("that, that the de- the deployment caused the accident, the incident"). It is not trusted to decide what is true. So the semantic extractor only returns candidates, and four deterministic checks decide which of them are learned. The extractor is not shown the telemetry, so it cannot fit claims to the data that will check them.
+**The model proposes; code decides.** A language model is good at reading messy speech ("that, that the de- the deployment caused the accident, the incident"). It is not trusted to decide what is true. So the semantic extractor only returns candidates, and four deterministic checks decide which of them are learned. The second check reads only the expert's words: in a live run Scribe heard "The **video** started right after the deployment"; the extractor mapped it to "failure began right after a deploy", and the telemetry does show that, but the words do not say anything failed, so the claim is rejected (*quote does not support claim*). Telemetry agreement never rescues words that do not support a claim. The extractor is not shown the telemetry, so it cannot fit claims to the data that will check them.
 
 **Everything that needs an exact answer is plain TypeScript:** signal derivation from telemetry, the runbook prediction, divergence detection, verification, rule building, counterfactual selection, rule matching, guardrails, trainee grading, the boundary map and the benchmark. A trainee verdict is identical every time and can be traced to its source.
 
@@ -69,7 +69,7 @@ expert's voice ─► Scribe v2 Realtime ─► transcript (verbatim, tagged wit
 |---|---|---|
 | Signals from telemetry | `src/domain/signals.ts` | Tri-state (present / absent / unknown). Missing data is never guessed. |
 | Runbook and divergence | `playbook.ts`, `divergence.ts` | No divergence means no question and nothing learned. |
-| Semantic candidates + verification | `semantic.ts`, `speech.ts` | zod schema, quote tracing with disfluency tolerance, four gates. |
+| Semantic candidates + verification | `semantic.ts`, `speech.ts`, `support.ts` | zod schema, quote tracing with disfluency tolerance, a quote-support check per signal, four gates. |
 | Phrase matcher | `extraction.ts` | Matches on a cleaned copy; every span maps back to the original words. |
 | Rule + evidence strength | `rules.ts` | Conditions carry the expert's quote and the version that introduced them. |
 | Counterfactual | `counterfactual.ts`, `session.ts` | Picks a cited signal with an uncited sibling. The answer is a draft until the expert confirms it; "no" plus an alternative confirms the condition and adds a guardrail scoped to what the question held constant, "yes" broadens it. A "no" without an alternative is never applied. |
@@ -148,7 +148,7 @@ npm run setup:reasoning-agent       # creates a text-only agent, prints its id
 The microphone needs a secure context: `localhost` or HTTPS. Node 20.9+ runs the app; the test runner needs Node 22.12+.
 
 ```bash
-npm test          # 144 tests: domain, semantic verification, counterfactual gate, boundary, memory, benchmark, routes, retries
+npm test          # 173 tests: domain, semantic verification, quote support, counterfactual gate, boundary, memory, benchmark, routes, retries
 npm run lint
 npm run build
 ```
@@ -167,8 +167,8 @@ Story view walks through the six chapters in order: Before, Surprise, Why, Bound
 
 ## Limitations
 
-- The ElevenLabs Agents extractor has not been exercised against the live API. Its message shapes come from the official SDK source and are tested against a simulated socket. If it fails, the phrase matcher takes over and the UI shows why.
-- The phrase matcher covers a closed vocabulary of 7 signals. It fails safe (no rule, an explicit message) on reasons outside it.
+- The ElevenLabs Agents extractor has been run locally with a real key; in this repository it is tested against a simulated socket. If it fails, the phrase matcher takes over and the UI shows why.
+- The phrase matcher and the quote-support check use fixed concept words for the 7 signals in this demo. They fail safe: a reason worded outside them is shown and not learned (for example "it started right after the deploy" names no failure, so the timing claim is not learned).
 - The counterfactual answer is read by simple rules (a leading "no", "would still", action words). That is why live and typed answers always wait for the expert to confirm the reading.
 - One expert, one incident, one rule, one counterfactual. Evidence strength is capped accordingly.
 - No persistence: a refresh starts over. No real monitoring integration.

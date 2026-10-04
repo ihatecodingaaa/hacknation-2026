@@ -12,6 +12,7 @@ src/domain/            pure TypeScript, no React, unit tested
   speech.ts            disfluency-tolerant normalization with offset maps; quote tracing
   extraction.ts        phrase matcher (fallback and cross-check)
   semantic.ts          schema for model-proposed claims; deterministic verification
+  support.ts           do the expert's words support the claimed signal? (concept anchors, no telemetry)
   rules.ts             rule v1 (conditions only), evidence strength
   counterfactual.ts    choose the boundary to probe; read the answer as a draft; rule v2
   evaluation.ts        match a rule (guardrails first), grade a trainee, provenance
@@ -39,7 +40,7 @@ src/components/        Story view (judge/), Analyst console, boundary map, verif
 
 ## Trust boundary
 
-The model's output is untrusted input. It is parsed with a strict schema, and every claim must pass four checks before it can become a rule condition. A transcript that tries to instruct the model can at worst produce claims that still have to be in the transcript and agree with the telemetry. The extractor is not given telemetry values.
+The model's output is untrusted input. It is parsed with a strict schema, and every claim must pass four checks before it can become a rule condition: its quote is in the transcript, those words support the claimed signal, it is not hedged, and the telemetry agrees. A transcript that tries to instruct the model can at worst produce claims that still have to be in the transcript, be supported by the words, and agree with the telemetry. The extractor is not given telemetry values.
 
 ## Reliability
 

@@ -118,7 +118,7 @@ describe("counterfactual answers are drafts until the expert confirms", () => {
 describe("the counterfactual visibly moves the boundary", () => {
   // The expert names deploy timing and version scope only. The counterfactual then
   // probes version scope: "If the failures weren't isolated to the new version...".
-  const EXPLANATION = "It started right after the deployment and only the new version is affected.";
+  const EXPLANATION = "It broke right after the deployment and only the new version is affected.";
 
   function scopeStory() {
     const s0 = atCounterfactual(EXPLANATION);

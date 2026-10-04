@@ -1,6 +1,7 @@
 import { ACTIONS } from "./actions";
 import { signalState } from "./signals";
 import { isHedged, normalizeSpeech, toOriginalSpan } from "./speech";
+import { clauseAround, quoteSupportsSignal } from "./support";
 import type {
   ActionId,
   Citation,
@@ -137,13 +138,20 @@ export function extractExplanation(
     }
   }
 
-  // A hedged phrase ("maybe the database was slow") is shown, not learned.
+  // The same gates as model claims: the words around a match must support the
+  // signal (a timing phrase like "right after the deployment" says nothing
+  // about a failure on its own), and a hedged phrase is shown, not learned.
   const rejected: RejectedCandidate[] = [];
   const citations: Citation[] = found
     .sort((a, b) => a.start - b.start)
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     .map(({ nStart, nEnd, ...c }) => c)
     .filter((c) => {
+      const support = quoteSupportsSignal(c.signal, c.claimed, clauseAround(text, c));
+      if (!support.supported) {
+        rejected.push({ text: c.quote, signal: c.signal, reason: "unsupported", detail: support.reason });
+        return false;
+      }
       const hedge = isHedged(text, c);
       if (!hedge) return true;
       rejected.push({ text: c.quote, signal: c.signal, reason: "hedged", detail: `Hedged in the transcript ("${hedge}")` });

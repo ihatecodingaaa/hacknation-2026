@@ -24,8 +24,8 @@ function verify(transcript: string, over: Partial<SemanticCandidates>) {
 
 describe("hedged words never become conditions", () => {
   it("a causal claim on a hedged clause is rejected, even if the model did not flag it", () => {
-    const x = verify("I think maybe the deploy caused it, I'm not sure.", {
-      causalClaims: [{ text: "maybe the deploy caused it", cause: "deploy_preceded_failure", effect: "the incident" }],
+    const x = verify("I think maybe the deploy caused the outage, I'm not sure.", {
+      causalClaims: [{ text: "maybe the deploy caused the outage", cause: "deploy_preceded_failure", effect: "the incident" }],
     });
     expect(x.citations).toEqual([]);
     expect(x.status).toBe("ungrounded");
@@ -33,9 +33,9 @@ describe("hedged words never become conditions", () => {
   });
 
   it("a causal claim on words the model itself rejected as unsure is not learned", () => {
-    const x = verify("The deploy caused it, I'm fairly sure.", {
-      observations: [{ text: "The deploy caused it", candidateSignal: "deploy_preceded_failure", polarity: "present", confidence: 0.2 }],
-      causalClaims: [{ text: "The deploy caused it", cause: "deploy_preceded_failure", effect: "it" }],
+    const x = verify("The deploy caused the outage, I'm fairly sure.", {
+      observations: [{ text: "The deploy caused the outage", candidateSignal: "deploy_preceded_failure", polarity: "present", confidence: 0.2 }],
+      causalClaims: [{ text: "The deploy caused the outage", cause: "deploy_preceded_failure", effect: "the outage" }],
     });
     expect(x.citations).toEqual([]);
     expect(x.rejected.map((r) => r.reason)).toEqual(["low_confidence", "low_confidence"]);
@@ -98,7 +98,7 @@ describe("cleaning speech never flips a claim", () => {
 
 describe("rules always rest on evidence", () => {
   it('"yes, still" on the only condition keeps it instead of producing an empty rule', () => {
-    const { v2 } = learnFromHero({ explanation: "It started right after the deploy.", answer: "Yes, I'd still roll back." });
+    const { v2 } = learnFromHero({ explanation: "It broke right after the deploy.", answer: "Yes, I'd still roll back." });
     expect(v2.conditions.map((c) => c.id)).toEqual(["c-deploy_preceded_failure"]);
     expect(v2.confidence.score).toBeLessThan(0.65);
     expect(executeDecisionMemory(compileDecisionMemory(v2), {}).kind).toBe("abstain");
@@ -106,7 +106,7 @@ describe("rules always rest on evidence", () => {
 
   it("dropping a condition leaves no policy behind for it", () => {
     const { v2 } = learnFromHero({
-      explanation: "It started right after the deploy and only the new version is affected.",
+      explanation: "It broke right after the deploy and only the new version is affected.",
       answer: "Yes, I'd still roll back.",
     });
     expect(v2.conditions.map((c) => c.id)).toEqual(["c-deploy_preceded_failure"]);

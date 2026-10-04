@@ -403,7 +403,10 @@ function ChapterWhy(p: JudgeViewProps) {
                     </li>
                   </ul>
                   <p className="mt-3 text-[13px] leading-relaxed text-muted">
-                    Only the {s.ruleV1.conditions.length} supported claims became conditions. Nothing else was learned.
+                    {s.ruleV1.conditions.length === 1
+                      ? "Only the 1 supported claim became a condition."
+                      : `Only the ${s.ruleV1.conditions.length} supported claims became conditions.`}{" "}
+                    Nothing else was learned.
                   </p>
                   <div className="mt-4">
                     <Next onClick={p.onProbe}>Probe the boundary</Next>

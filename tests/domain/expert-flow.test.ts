@@ -56,7 +56,7 @@ describe("grounded extraction", () => {
       ["error_spike", "deploy_preceded_failure", "new_version_only"],
     ],
     [
-      "It started just after we deployed, only the canary is throwing errors.",
+      "It started failing just after we deployed, only the canary is throwing errors.",
       ["deploy_preceded_failure", "new_version_only", "error_spike"],
     ],
     [
@@ -68,6 +68,12 @@ describe("grounded extraction", () => {
     expect(x.status).toBe("grounded");
     expect(x.citations.map((c) => c.signal)).toEqual(expected);
     expect(x.citations.every((c) => c.grounded)).toBe(true);
+  });
+
+  it('"it started" after a deploy is not a failure: the timing claim is shown, not learned', () => {
+    const x = extractExplanation("It started just after we deployed, only the canary is throwing errors.", signals, "restart_service");
+    expect(x.citations.map((c) => c.signal)).toEqual(["new_version_only", "error_spike"]);
+    expect(x.rejected).toEqual([expect.objectContaining({ signal: "deploy_preceded_failure", reason: "unsupported" })]);
   });
 
   it("refuses to learn from a vague answer", () => {

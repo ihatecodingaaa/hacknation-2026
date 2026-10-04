@@ -8,6 +8,7 @@ import { Label, SourceTag, Tag, cx } from "./ui";
 const REJECTED_TEXT: Record<RejectedCandidate["reason"], string> = {
   not_in_transcript: "not in transcript",
   not_observable: "not observable",
+  unsupported: "quote does not support claim",
   hedged: "expert unsure",
   low_confidence: "low confidence",
   off_topic: "not about the runbook action",
@@ -192,8 +193,9 @@ export function ClaimVerification({
       )}
 
       <div className="border-t border-line pt-2 font-mono text-[11px] leading-relaxed text-faint">
-        Claims proposed by: <span className="text-muted">{x.extractor.label}</span>. Checked by deterministic code: quote in
-        transcript, observable signal, telemetry agrees. Only supported claims are learned.
+        Claims proposed by: <span className="text-muted">{x.extractor.label}</span>. Checked by deterministic code, in order:
+        quote is in the transcript, the words support the claim, not hedged, telemetry agrees. Only claims that pass all four
+        are learned.
         {x.extractor.fallbackReason && (
           <div className="text-unknown">Semantic extractor not used ({x.extractor.fallbackReason}). Phrase matcher used instead.</div>
         )}

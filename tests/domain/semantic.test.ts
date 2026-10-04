@@ -112,7 +112,7 @@ describe("deterministic verification of model claims", () => {
           { text: "only the new version is affected", candidateSignal: "new_version_only", polarity: "present", confidence: 0.9 },
           // Supported by telemetry but invented: not in the transcript.
           { text: "the error rate jumped to ten percent", candidateSignal: "error_spike", polarity: "present", confidence: 0.9 },
-          // In the transcript but contradicted by telemetry (CPU is 41%).
+          // In the transcript, but the words say nothing about CPU.
           { text: "the bad version", candidateSignal: "cpu_saturated", polarity: "present", confidence: 0.8 },
         ],
         rejectedAlternative: { action: "restart_service", text: "Restarting won't just restart the bad version", reason: "restart keeps the bad build" },
@@ -123,9 +123,10 @@ describe("deterministic verification of model claims", () => {
     expect(x.status).toBe("grounded");
     const learned = x.citations.filter((c) => c.grounded).map((c) => c.signal);
     expect(learned).toEqual(["deploy_preceded_failure", "new_version_only"]);
-    expect(x.citations.find((c) => c.signal === "cpu_saturated")).toMatchObject({ grounded: false, observed: "absent" });
+    expect(x.citations.find((c) => c.signal === "cpu_saturated")).toBeUndefined();
     expect(x.rejected).toEqual([
       expect.objectContaining({ signal: "error_spike", reason: "not_in_transcript" }),
+      expect.objectContaining({ signal: "cpu_saturated", reason: "unsupported" }),
     ]);
     expect(x.rejectionQuote).toBe("Restarting won't just restart the bad version");
     expect(x.interpretation).toContain("Bad deploy");
@@ -133,7 +134,7 @@ describe("deterministic verification of model claims", () => {
   });
 
   it("does not learn unmapped, hedged or low-confidence claims", () => {
-    const transcript = "Maybe the database was slow, and the logs showed a null pointer after the deploy.";
+    const transcript = "Maybe the database was slow, and the logs showed a null pointer. The errors started after the deploy.";
     const x = verifySemanticCandidates({
       transcript,
       signals,
@@ -143,7 +144,7 @@ describe("deterministic verification of model claims", () => {
         observations: [
           { text: "Maybe the database was slow", candidateSignal: "db_degraded", polarity: "unknown", confidence: 0.6 },
           { text: "the logs showed a null pointer", candidateSignal: "unmapped", polarity: "present", confidence: 0.9, note: "application logs" },
-          { text: "after the deploy", candidateSignal: "deploy_preceded_failure", polarity: "present", confidence: 0.3 },
+          { text: "The errors started after the deploy", candidateSignal: "deploy_preceded_failure", polarity: "present", confidence: 0.3 },
         ],
         uncertainty: ["unsure whether the database was involved"],
       }),
@@ -152,6 +153,20 @@ describe("deterministic verification of model claims", () => {
     expect(x.status).toBe("ungrounded");
     expect(x.rejected.map((r) => r.reason)).toEqual(["hedged", "not_observable", "low_confidence"]);
     expect(x.uncertainty).toEqual(["unsure whether the database was involved"]);
+  });
+
+  it("supported words that the telemetry contradicts are shown, not learned", () => {
+    const x = verifySemanticCandidates({
+      transcript: "The database was down after the deploy.",
+      signals,
+      expectedAction: "restart_service",
+      label: "test model",
+      candidates: candidates({
+        observations: [{ text: "The database was down", candidateSignal: "db_degraded", polarity: "present", confidence: 0.9 }],
+      }),
+    });
+    expect(x.citations).toEqual([expect.objectContaining({ signal: "db_degraded", grounded: false, observed: "absent" })]);
+    expect(x.status).toBe("ungrounded");
   });
 
   it("checks a causal claim against its precondition and learns the cause", () => {

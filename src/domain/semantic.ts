@@ -3,6 +3,7 @@ import { ACTIONS, ACTION_ORDER } from "./actions";
 import { extractExplanation, findRejection } from "./extraction";
 import { SIGNAL_ORDER, signalState } from "./signals";
 import { isHedged, locateQuote } from "./speech";
+import { clauseAround, quoteSupportsSignal } from "./support";
 import type {
   ActionId,
   CausalCheck,
@@ -20,12 +21,15 @@ import type {
 // shown the signal vocabulary but not the telemetry, so it cannot fit claims
 // to the data. This module then DECIDES what can be trusted, with plain code:
 //
-//   1. the output must match a strict schema, or it is discarded;
-//   2. every claim must quote words that are really in the transcript;
-//   3. it must name an observable signal, stated without hedging;
+//   0. the output must match a strict schema, or it is discarded;
+//   1. provenance: every claim must quote words that are really in the transcript;
+//   2. quote support: those words, read on their own, must say what the claim
+//      says (support.ts), for an observable signal;
+//   3. no hedging, and the extractor must be confident;
 //   4. the telemetry must agree with it.
 //
-// Only claims that pass all four become rule conditions.
+// Only claims that pass every gate become rule conditions. Telemetry never
+// rescues words that do not support the claim.
 
 const SIGNAL_OR_UNMAPPED = z.enum(["unmapped", ...SIGNAL_ORDER] as const);
 const ACTION = z.enum(ACTION_ORDER as [ActionId, ...ActionId[]]);
@@ -140,11 +144,17 @@ export function verifySemanticCandidates(input: VerifyInput): Extraction {
     return unsure.some((u) => overlaps(u, span)) ? "The extractor marked this as uncertain" : null;
   }
   const blocked: { start: number; end: number; reason: RejectedCandidate["reason"]; detail: string }[] = [];
+  // Gate 2: the traced words, within their own clause, must support the signal.
+  // Reads the words only; telemetry is not consulted here.
+  function supportAt(signal: SignalId, claimed: "present" | "absent", span: { start: number; end: number }) {
+    return quoteSupportsSignal(signal, claimed, clauseAround(transcript, span));
+  }
 
   for (const o of candidates.observations) {
     const span = locateQuote(transcript, o.text);
     const signal = o.candidateSignal === "unmapped" ? null : o.candidateSignal;
     const hedge = span ? hedgeAt(span) : null;
+    const support = span && signal && o.polarity !== "unknown" ? supportAt(signal, o.polarity, span) : null;
     if (!span) {
       rejected.push({ text: o.text, signal, reason: "not_in_transcript", detail: "Quoted words are not in the transcript" });
     } else if (!signal) {
@@ -154,6 +164,9 @@ export function verifySemanticCandidates(input: VerifyInput): Extraction {
         reason: "not_observable",
         detail: o.note ? `Refers to ${o.note}, which this incident's telemetry does not measure` : "Not an observable signal",
       });
+    } else if (support && !support.supported) {
+      rejected.push({ text: transcript.slice(span.start, span.end), signal, reason: "unsupported", detail: support.reason });
+      blocked.push({ ...span, reason: "unsupported", detail: support.reason });
     } else if (o.polarity === "unknown" || hedge) {
       const detail = hedge ?? "The expert was unsure";
       rejected.push({ text: transcript.slice(span.start, span.end), signal, reason: "hedged", detail });
@@ -175,7 +188,13 @@ export function verifySemanticCandidates(input: VerifyInput): Extraction {
       rejected.push({ text: c.text, signal: cause, reason: "not_in_transcript", detail: "Quoted words are not in the transcript" });
       continue;
     }
-    // The same gates as observations: a causal claim on hedged or doubted words is not learned.
+    // The same gates as observations: the words must support the cause they
+    // are cited for, and a causal claim on hedged or doubted words is not learned.
+    const support = cause ? supportAt(cause, "present", span) : null;
+    if (support && !support.supported) {
+      rejected.push({ text: transcript.slice(span.start, span.end), signal: cause, reason: "unsupported", detail: support.reason });
+      continue;
+    }
     const hedge = hedgeAt(span);
     const block = blocked.find((b) => overlaps(b, span));
     if (hedge || block) {
