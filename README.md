@@ -1,6 +1,6 @@
 # SecondShift
 
-> **The company instructions say one thing. The expert does something else. SecondShift learns why.**
+> **The company instructions say one thing. The expert(A senior in a company) does something else. SecondShift learns why.**
 
 SecondShift is a system for capturing the useful judgment that experienced workers carry in their heads but never wrote down.
 
