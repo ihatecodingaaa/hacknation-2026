@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { ACTIONS, ACTION_ORDER } from "@/domain/actions";
 import type { BoundaryMapData, Placement } from "@/domain/boundary";
 import type { PolicyResult } from "@/domain/benchmark";
@@ -104,7 +104,7 @@ function Chapter({ kicker, title, lead, children }: { kicker: string; title: Rea
   return (
     <section className="mx-auto max-w-[1320px] px-6 pb-16 pt-6">
       <div className="font-mono text-[12px] uppercase tracking-[0.1em] text-faint">{kicker}</div>
-      <h1 className="mt-1.5 max-w-[1000px] text-[30px] font-semibold leading-[1.15] tracking-tight text-text lg:text-[36px]">{title}</h1>
+      <h1 tabIndex={-1} className="mt-1.5 max-w-[1000px] focus:outline-none text-[30px] font-semibold leading-[1.15] tracking-tight text-text lg:text-[36px]">{title}</h1>
       {lead && <p className="mt-2 max-w-[820px] text-[17px] leading-relaxed text-muted">{lead}</p>}
       <div className="mt-6">{children}</div>
     </section>
@@ -654,7 +654,25 @@ function NeedsRule({ onLoadScripted, onChapter }: { onLoadScripted: () => void; 
 
 export function JudgeView(p: JudgeViewProps) {
   const open = chapterUnlocked(p.chapter, p.session);
+  const pane = useRef<HTMLDivElement>(null);
+  const firstChapter = useRef(true);
 
+  // A new chapter always opens at its heading. Reset the chapter pane and, on
+  // narrow screens where the page itself scrolls, the window; once more on the
+  // next frame to absorb scroll momentum carried over from the click. Focus
+  // moves to the heading (without scrolling) so keyboard and screen-reader
+  // users start at the top of the new chapter too.
+  useLayoutEffect(() => {
+    const reset = () => {
+      pane.current?.scrollTo({ top: 0 });
+      if (window.scrollY > 0) window.scrollTo({ top: 0 });
+    };
+    reset();
+    const frame = requestAnimationFrame(reset);
+    if (firstChapter.current) firstChapter.current = false;
+    else pane.current?.querySelector<HTMLElement>("h1")?.focus({ preventScroll: true });
+    return () => cancelAnimationFrame(frame);
+  }, [p.chapter]);
   let body: ReactNode;
   if (!open) body = <NeedsRule onLoadScripted={p.onLoadScripted} onChapter={p.onChapter} />;
   else if (p.chapter === "before") body = <ChapterBefore {...p} />;
@@ -667,7 +685,7 @@ export function JudgeView(p: JudgeViewProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Stepper chapter={p.chapter} session={p.session} onChapter={p.onChapter} />
-      <div className="judge pane min-h-0 flex-1 overflow-y-auto" key={p.chapter}>
+      <div ref={pane} className="judge pane min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]" key={p.chapter}>
         {body}
       </div>
     </div>
