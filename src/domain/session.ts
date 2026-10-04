@@ -1,8 +1,8 @@
 import { applyCounterfactual, generateCounterfactual, interpretAnswer } from "./counterfactual";
 import { detectDivergence } from "./divergence";
-import { extractExplanation } from "./extraction";
 import { expectedAction } from "./playbook";
 import { buildRule } from "./rules";
+import { extractWithAttempt, type SemanticAttempt } from "./semantic";
 import { deriveSignals } from "./signals";
 import type {
   ActionId,
@@ -72,10 +72,20 @@ export function chooseAction(s: ExpertSession, action: ActionId): ExpertSession 
   };
 }
 
-export function submitExplanation(s: ExpertSession, text: string, source: TranscriptSource): ExpertSession {
+/**
+ * Learn from the expert's explanation. `semantic` is the result of the
+ * optional model-based extraction (fetched by the UI before calling this);
+ * null means it was not configured, and the phrase matcher is used.
+ */
+export function submitExplanation(
+  s: ExpertSession,
+  text: string,
+  source: TranscriptSource,
+  semantic: SemanticAttempt | null = null,
+): ExpertSession {
   if (!s.divergence) return s;
   const explanation = { text, source };
-  const extraction = extractExplanation(text, s.signals, s.expected.action);
+  const extraction = extractWithAttempt(text, s.signals, s.expected.action, semantic);
   const ruleV1 = buildRule({
     incident: s.incident,
     signals: s.signals,

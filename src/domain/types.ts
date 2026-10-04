@@ -137,11 +137,51 @@ export interface Citation {
   grounded: boolean;
 }
 
+/** How a citation's claim compares with the telemetry. Only "supported" is learned. */
+export type ClaimVerdict = "supported" | "contradicted" | "unverifiable";
+
+/** Which extractor proposed the claims. Verification is the same for both. */
+export interface ExtractorInfo {
+  kind: "pattern" | "semantic";
+  /** e.g. "ElevenLabs agent" or "Deterministic phrase matcher". */
+  label: string;
+  /** Set when a semantic extractor was attempted and could not be used. */
+  fallbackReason?: string;
+}
+
+/** A model-proposed claim that never reached the telemetry check. */
+export interface RejectedCandidate {
+  text: string;
+  signal: SignalId | null;
+  reason: "not_in_transcript" | "not_observable" | "hedged" | "low_confidence";
+  detail: string;
+}
+
+/** A causal claim ("the deploy caused it") checked against its precondition. */
+export interface CausalCheck {
+  quote: string;
+  start: number;
+  end: number;
+  cause: SignalId | null;
+  effect: string;
+  /** Does the telemetry show the cause it rests on? */
+  consistent: boolean | "unknown";
+}
+
 export interface Extraction {
   citations: Citation[];
   /** Sentence where the expert says why the playbook action is wrong. */
   rejectionQuote: string | null;
   status: "grounded" | "ungrounded";
+  extractor: ExtractorInfo;
+  rejected: RejectedCandidate[];
+  causal: CausalCheck[];
+  /** Model-written restatement. Shown as interpretation, never used as evidence. */
+  interpretation: string | null;
+  /** Places where the expert said they were unsure. */
+  uncertainty: string[];
+  /** Semantic runs only: what the phrase matcher found on the same transcript. */
+  patternCrossCheck: SignalId[] | null;
 }
 
 export type EvidenceKind = "expert_quote" | "signal" | "counterfactual";
@@ -174,6 +214,10 @@ export interface Guardrail {
   evidenceIds: string[];
 }
 
+/**
+ * Evidence strength factor. The score is a transparent heuristic (a sum of
+ * visible factors), not a probability.
+ */
 export interface ConfidenceFactor {
   label: string;
   delta: number;

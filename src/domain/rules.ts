@@ -19,6 +19,9 @@ import type {
 export const CONFIDENCE_CAP = 0.85;
 const CAP_REASON = "Learned from one incident. A second confirming case is needed to go higher.";
 
+// Evidence strength is a transparent heuristic: the sum of the listed factors,
+// clamped to [0, cap]. It is not a probability and is never presented as one.
+
 const CATEGORY_ORDER: SignalCategory[] = ["change", "symptom", "scope", "resource"];
 
 /**
@@ -113,7 +116,8 @@ export function buildRule(input: BuildRuleInput): DecisionRule | null {
     });
   }
 
-  const ungrounded = extraction.citations.filter((c) => !c.grounded).length;
+  const contradicted = extraction.citations.filter((c) => !c.grounded && c.observed !== "unknown").length;
+  const unverifiable = extraction.citations.filter((c) => !c.grounded && c.observed === "unknown").length;
   const factors: ConfidenceFactor[] = [
     { label: "Learned from 1 expert decision", delta: 0.3 },
     {
@@ -124,10 +128,16 @@ export function buildRule(input: BuildRuleInput): DecisionRule | null {
   if (extraction.rejectionQuote) {
     factors.push({ label: "Expert said why the runbook action fails", delta: 0.05 });
   }
-  if (ungrounded > 0) {
+  if (contradicted > 0) {
     factors.push({
-      label: `${ungrounded} claim${ungrounded === 1 ? "" : "s"} not supported by telemetry, ignored`,
-      delta: -0.1 * ungrounded,
+      label: `${contradicted} claim${contradicted === 1 ? "" : "s"} contradicted by telemetry, not learned`,
+      delta: -0.1 * contradicted,
+    });
+  }
+  if (unverifiable > 0) {
+    factors.push({
+      label: `${unverifiable} claim${unverifiable === 1 ? "" : "s"} could not be checked (telemetry missing), not learned`,
+      delta: -0.1 * unverifiable,
     });
   }
 

@@ -1,16 +1,21 @@
 import { ACTIONS } from "./actions";
 import { signalState } from "./signals";
+import { normalizeSpeech, toOriginalSpan } from "./speech";
 import type {
   ActionId,
   Citation,
+  ClaimVerdict,
   Extraction,
   IncidentSignal,
   SignalId,
 } from "./types";
 
-// Grounded extraction.
+// Deterministic extraction: the fallback when no semantic extractor is
+// configured, and the regression reference when one is.
 //
 // The explanation is matched against a closed vocabulary of incident signals.
+// Matching runs on a disfluency-cleaned copy of the transcript (see speech.ts);
+// every span is mapped back so quotes are always the expert's exact words.
 // A phrase only becomes a rule condition if the telemetry agrees with what the
 // expert claimed. Anything the telemetry contradicts, or cannot confirm, is
 // kept as a visible citation but not learned. If nothing grounds, there is
@@ -86,41 +91,67 @@ export function findSentences(text: string): { text: string; start: number; end:
   return out;
 }
 
+export const PATTERN_EXTRACTOR = { kind: "pattern", label: "Deterministic phrase matcher" } as const;
+
+export function citationVerdict(c: Pick<Citation, "claimed" | "observed">): ClaimVerdict {
+  if (c.observed === c.claimed) return "supported";
+  return c.observed === "unknown" ? "unverifiable" : "contradicted";
+}
+
+/** The sentence where the expert says why the runbook action is wrong. */
+export function findRejection(text: string, expectedAction: ActionId): string | null {
+  return findSentences(text).find((s) => ACTIONS[expectedAction].keywords.test(s.text))?.text ?? null;
+}
+
 export function extractExplanation(
   text: string,
   signals: IncidentSignal[],
   expectedAction: ActionId,
 ): Extraction {
-  const citations: Citation[] = [];
+  const norm = normalizeSpeech(text);
+  const found: (Citation & { nStart: number; nEnd: number })[] = [];
 
   for (const pattern of PATTERNS) {
     pattern.re.lastIndex = 0;
     let m: RegExpExecArray | null;
-    while ((m = pattern.re.exec(text))) {
+    while ((m = pattern.re.exec(norm.text))) {
       const span = { start: m.index, end: m.index + m[0].length };
       if (m[0].length === 0) {
         pattern.re.lastIndex++;
         continue;
       }
-      if (citations.some((c) => overlaps(c, span))) continue;
+      if (found.some((c) => overlaps({ start: c.nStart, end: c.nEnd }, span))) continue;
       const observed = signalState(signals, pattern.signal);
-      citations.push({
+      const original = toOriginalSpan(norm, span.start, span.end);
+      found.push({
         signal: pattern.signal,
         claimed: pattern.claimed,
         observed,
-        quote: m[0],
-        ...span,
+        quote: text.slice(original.start, original.end),
+        ...original,
         grounded: observed === pattern.claimed,
+        nStart: span.start,
+        nEnd: span.end,
       });
     }
   }
 
-  citations.sort((a, b) => a.start - b.start);
-
-  const rejectionQuote =
-    findSentences(text).find((s) => ACTIONS[expectedAction].keywords.test(s.text))?.text ?? null;
+  const citations: Citation[] = found
+    .sort((a, b) => a.start - b.start)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    .map(({ nStart, nEnd, ...c }) => c);
 
   const grounded = citations.some((c) => c.grounded && c.claimed === "present");
 
-  return { citations, rejectionQuote, status: grounded ? "grounded" : "ungrounded" };
+  return {
+    citations,
+    rejectionQuote: findRejection(text, expectedAction),
+    status: grounded ? "grounded" : "ungrounded",
+    extractor: { ...PATTERN_EXTRACTOR },
+    rejected: [],
+    causal: [],
+    interpretation: null,
+    uncertainty: [],
+    patternCrossCheck: null,
+  };
 }
