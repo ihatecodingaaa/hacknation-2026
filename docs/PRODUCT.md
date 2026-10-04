@@ -10,7 +10,11 @@ ElevenLabs: The AI Apprentice
 
 ## One Sentence
 
-SecondShift watches experts work, detects when their decisions diverge from the obvious playbook, asks why at the right moment, learns the hidden decision boundary, and teaches that judgment to the next person.
+SecondShift learns what changes an expert's mind: it detects when an expert's decision diverges from the playbook, asks why at that moment, verifies the reasons against evidence, probes the boundary with a counterfactual, and turns the result into decision memory for people and software.
+
+## Positioning
+
+Existing systems capture what experts do. SecondShift captures the exception to the workflow and the condition behind it. SRE incident response is the demonstration environment, not the product category.
 
 ## Hero Scenario
 
@@ -69,7 +73,7 @@ TraineeDecision
 7. System extracts a structured decision rule.
 8. System asks one counterfactual question.
 9. Rule is updated.
-10. Decision graph is shown.
+10. Decision Boundary Map is shown.
 11. Switch to trainee mode.
 12. Show a new unseen incident.
 13. Trainee makes a wrong choice.

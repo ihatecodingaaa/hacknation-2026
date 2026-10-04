@@ -1,200 +1,183 @@
 # SecondShift
 
-**SecondShift learns the judgment behind an expert's deviation from the playbook, and teaches it to the next person on call.**
+**SecondShift learns what changes an expert's mind.**
 
-It does not record what the expert does. It notices when the expert does something *different* from the obvious action, asks why at that moment, turns the answer into a rule grounded in what was actually on screen, probes the edge of that rule with one counterfactual question, and then uses the rule to coach a trainee on an incident the expert never saw, with every verdict traced back to the expert's own words.
+When a senior engineer ignores the runbook, that decision holds knowledge nobody wrote down. SecondShift notices the moment, asks the expert why (by voice, through ElevenLabs), checks every reason against the telemetry, probes where the reason stops applying with one counterfactual question, and compiles the result into decision memory that can coach a trainee or be read by software.
 
 Built for **Hack-Nation 2026, ElevenLabs challenge: The AI Apprentice.**
 
 ---
 
-## The problem
+## Why workflow capture is not enough
 
-Runbooks capture the obvious move: errors are up, restart the service. Senior engineers often do something else, and the reason lives only in their head: *"the errors started right after the deploy and only the new version is failing, so restarting just restarts the bad code."*
+Existing tools capture what experts do: screen recordings, SOP generators, process and task mining, RAG over the wiki. They record that the expert rolled back. They do not record the condition that made rollback right, or the case where it would be wrong.
 
-Recording the expert's actions doesn't capture that. A screen recording shows a rollback; it doesn't show the condition that made rollback right, or the case where it would be wrong. When that engineer is asleep, the trainee follows the runbook and restarts the bad build.
+That condition is the valuable part. It only shows up when the expert's action differs from the obvious one, and it only becomes reusable once you know its edges. SecondShift is built around exactly those two moments: **the deviation** and **the boundary**.
 
-## Thesis
+## Hero scenario
 
-The valuable knowledge is at the **decision boundary**: the hidden condition that makes an expert choose differently from the playbook. So SecondShift:
+`checkout-api` is throwing 5xx errors. The runbook says **restart the service**. The on-call expert **rolls back the deployment** instead.
 
-1. **Predicts** the obvious action (the runbook).
-2. **Detects divergence** when the expert does something else. If the expert follows the runbook, it stays quiet: there's nothing new to learn.
-3. **Asks why** at that moment, by voice.
-4. **Grounds** the answer in observed signals. Only reasons the telemetry confirms become rule conditions.
-5. **Probes the boundary** with one counterfactual: swap a cited signal for one the expert didn't mention, and ask if the decision survives.
-6. **Updates the rule** (version 2), with guardrails, evidence and a confidence score whose factors you can see.
-7. **Transfers** it: grades a trainee on a different incident and explains the verdict with provenance back to the expert.
+1. **Before.** SecondShift predicts the runbook action from the telemetry (RB-3, error rate elevated).
+2. **Surprise.** The expert's action differs. SecondShift names what the runbook ignored: deploy timing, version scope, latency.
+3. **Why.** It asks, out loud: *"You rolled back instead of restarting. What made you choose that?"* The expert answers by microphone; Scribe v2 Realtime transcribes it.
+4. **Verify.** Each claim in the answer is checked against telemetry. Supported claims become rule conditions. Contradicted, unverifiable or invented claims are shown and not learned.
+5. **Boundary.** It asks one counterfactual: *"If latency increased but the error rate stayed normal, would you still roll back?"* The answer ("No, I'd investigate first") moves the decision boundary. The Decision Boundary Map shows the cell change.
+6. **Transfer.** A trainee on a different incident (different service and numbers) chooses restart. SecondShift flags the mismatch and shows the expert's original words as the reason. On an incident where every version fails, it refuses to recommend rollback. Where per-version data is missing, it abstains.
+7. **Memory.** The same judgment is exported as a versioned JSON artifact. An evaluator that reads only that file runs it on 14 seeded incidents against a runbook-only baseline.
 
-## What the judge sees
-
-```
-EXPECTED ACTION  ≠  ACTUAL EXPERT ACTION
-        ↓
-DECISION DIVERGENCE      (which signals the runbook ignored)
-        ↓
-WHY? (voice)             "The failures started right after the deployment..."
-        ↓
-GROUNDED RULE v1         IF failure began right after a deploy
-                         AND error rate spiked
-                         AND only the new version is failing
-                         THEN roll back, not restart
-        ↓
-COUNTERFACTUAL           "If latency increased but the error rate stayed normal,
-                          would you still roll back?"  →  "No, I'd investigate first"
-        ↓
-RULE v2                  error spike confirmed as required
-                         + guardrail: latency without errors → investigate
-        ↓
-TRAINEE TRANSFER         new incident, trainee restarts → mismatch,
-                         with the expert's quote and source telemetry as evidence
-```
-
----
-
-## Demo walkthrough (about 3 minutes)
-
-Run `npm run dev` and open http://localhost:3000.
-
-**Expert shift, INC-2041 (checkout-api)**
-
-1. Left pane: the incident. Signals are derived from telemetry by code: deploy finished 8 min ago, 5xx 0.3% → 9.8%, latency up, only v2.14.0 failing (19.3% vs 0.3%), CPU and DB normal. The chart marks the deploy right before the error climb.
-2. Center, step 01: the runbook expects **Restart service** (RB-3: 5xx elevated).
-3. Step 02: click **Roll back deployment** as the expert's actual action.
-4. Step 03: **Decision divergence** appears, naming the three signals the runbook ignored. Those signals light up amber on the left.
-5. Step 04: SecondShift asks *"You rolled back instead of restarting. What made you choose that?"* (spoken via ElevenLabs TTS when a key is set). Answer by voice, type, or click **Use scripted answer** → **Learn from this answer**.
-6. Step 05: the transcript is shown with each grounded phrase highlighted and a table: phrase → signal → what the expert claimed → what telemetry shows. Rule v1 appears on the right with two derived guardrails and confidence 0.65 (each factor listed).
-7. Step 06: the counterfactual. *"If latency increased but the error rate stayed normal, would you still roll back?"* with the rationale (latency was on screen but not mentioned) and the hypothetical diff. Answer **Use scripted answer** → **Update the rule**.
-8. Step 07: rule v1 → v2. On the right, "Error rate spiked" is marked *boundary tested*, a new guardrail *"latency without an error spike → hold and investigate"* is added, confidence 0.65 → 0.85 (capped: one incident is one incident).
-9. Click **Test this judgment on a trainee →**.
-
-**Trainee transfer**
-
-10. Case **A** (payments-gateway, different numbers, same pattern). Trainee clicks **Restart service** → **Mismatch with the learned expert rule.** The three-way row shows *Runbook: Restart / Expert rule: Roll back / Trainee: Restart*. The condition table puts INC-2041 and INC-2057 values side by side. The right pane shows provenance: the expert's quote and the source telemetry.
-11. Case **B** (edge case): deploy just happened but every version fails (upstream dependency). Click **Roll back** → *blocked by a guardrail*: the rule knows where it stops.
-12. Case **C** (boundary): deploy, latency up, errors normal. Click **Roll back** → *crosses a boundary the expert set*; the expert said investigate. This exists only because of the counterfactual.
-13. Case **D** (missing data): per-version metrics are missing. Any choice → *Cannot confirm: missing evidence*. SecondShift won't guess.
-
-Extra paths worth showing: choose **Restart service** as the expert (no divergence, no question asked), or click **Try a vague answer** ("it just felt off"): no rule is learned, and the UI says why.
-
----
-
-## Architecture
-
-One Next.js app (App Router, TypeScript), one page, three server routes, no database.
+## How it works
 
 ```
-src/domain/            pure TypeScript, no React, fully unit tested
-  types.ts             IncidentState, IncidentSignal, Action, ExpectedAction,
-                       DecisionDivergence, ExpertExplanation, Citation,
-                       CounterfactualQuestion, DecisionRule, Guardrail,
-                       Evidence, Confidence, TraineeDecision, EvaluationResult
-  signals.ts           telemetry → tri-state signals (present / absent / unknown)
-  playbook.ts          runbook → expected action
-  divergence.ts        expected vs actual, ignored signals, the "why" question
-  extraction.ts        explanation text → citations grounded against telemetry
-  rules.ts             rule v1, derived guardrails, confidence from factors
-  counterfactual.ts    choose the boundary to probe, read the answer, rule v2
-  evaluation.ts        match rule on a new incident, grade the trainee, provenance
-  session.ts           the expert flow as pure state transitions (UI uses these)
-  scenarios.ts         seeded incidents and scripted fallback answers
-
-src/lib/voice/
-  elevenlabs-server.ts server-only: single-use token, TTS
-  scribe-client.ts     browser: mic → 16 kHz PCM → Scribe v2 Realtime WebSocket
-  tts-client.ts        browser: one audio channel for spoken questions
-
-src/app/api/voice/
-  status/route.ts      GET  is a key configured (never returns the key)
-  scribe-token/route.ts POST mint a single-use realtime_scribe token
-  speak/route.ts       POST text → MP3 via ElevenLabs TTS
-
-src/components/        the incident UI (left: incident, center: decision flow,
-                       right: learned rule / provenance)
+expert's voice ─► Scribe v2 Realtime ─► transcript (verbatim, tagged with its source)
+                                            │
+             ┌──────────────────────────────┴───────────────────────────┐
+             ▼                                                          ▼
+ semantic extractor (optional)                             phrase matcher (deterministic)
+ ElevenLabs Agents, text-only                              fallback and cross-check,
+ PROPOSES observations, causal claims,                     tolerant of "uh", repeats,
+ the rejected alternative, hedges                          cut-off words
+             │ strict zod schema                                        │
+             └────────────────────────────┬─────────────────────────────┘
+                                          ▼
+                              deterministic verifier DECIDES
+                  1. quoted words are really in the transcript
+                  2. names an observable signal   3. stated without hedging
+                  4. the telemetry agrees
+                                          ▼
+                 rule v1: only supported claims, plus derived guardrails
+                                          ▼
+          counterfactual chosen by code (cited signal vs uncited sibling), spoken by TTS
+                                          ▼
+           rule v2: condition marked boundary-tested, counterfactual guardrail added
+                 │                      │                          │
+                 ▼                      ▼                          ▼
+        Decision Boundary Map    trainee grading with      decision memory (JSON)
+        (flip each reason,       provenance to the         ─► seeded benchmark
+         run the real matcher)   expert's words            ─► agent-context text
 ```
 
-**Where AI is used, and where it isn't.** ElevenLabs does what needs a model: turning speech into text (Scribe v2 Realtime) and asking questions out loud (TTS). Everything that needs an exact, repeatable answer is plain code: deriving signals from telemetry, the runbook prediction, divergence, grounding, rule matching, guardrails and trainee grading. That's deliberate. A trainee verdict has to be explainable and identical every time, and a rule condition has to be checkable on a new incident.
+**The model proposes; code decides.** A language model is good at reading messy speech ("that, that the de- the deployment caused the accident, the incident"). It is not trusted to decide what is true. So the semantic extractor only returns candidates, and four deterministic checks decide which of them are learned. The extractor is not shown the telemetry, so it cannot fit claims to the data that will check them.
 
-**Grounded extraction.** The explanation is matched against a closed vocabulary of incident signals (with negation handling: "error rate stayed normal" is a claim of *absence*). Each match becomes a citation that records what the expert claimed and what telemetry shows. Only agreements become conditions. Contradicted or unverifiable claims are shown and penalise confidence, but are never learned. If nothing grounds, no rule is produced.
+**Everything that needs an exact answer is plain TypeScript:** signal derivation from telemetry, the runbook prediction, divergence detection, verification, rule building, counterfactual selection, rule matching, guardrails, trainee grading, the boundary map and the benchmark. A trainee verdict is identical every time and can be traced to its source.
 
-**Counterfactual selection.** Among signals the expert cited, pick one that has an observed-but-uncited sibling of the same kind (error spike ↔ latency). Ask whether the decision survives swapping them. "No" confirms the cited signal as required and adds a guardrail with the expert's alternative action. "Yes" broadens the condition to either signal. If the answer's stance is unclear, the expert picks; nothing is guessed.
+## The pieces worth inspecting
 
-**Confidence** is the sum of listed factors (one decision observed, reasons confirmed by telemetry, rejection reason given, counterfactual result, ignored claims), capped at 0.85 because it comes from a single incident. It's labelled as a heuristic in the UI.
-
----
-
-## How ElevenLabs is used
-
-| Capability | API | Where |
+| Concern | Where | What to look for |
 |---|---|---|
-| Speech to text, streaming | **Scribe v2 Realtime** (`scribe_v2_realtime`) over `wss://api.elevenlabs.io/v1/speech-to-text/realtime` | Expert answers to "why" and to the counterfactual |
-| Browser auth for STT | `POST /v1/single-use-token/realtime_scribe` (server-side, 15-min single-use token) | `/api/voice/scribe-token` |
-| Text to speech | `POST /v1/text-to-speech/{voice_id}` with `eleven_flash_v2_5` | SecondShift speaks the divergence question and the counterfactual |
+| Signals from telemetry | `src/domain/signals.ts` | Tri-state (present / absent / unknown). Missing data is never guessed. |
+| Runbook and divergence | `playbook.ts`, `divergence.ts` | No divergence means no question and nothing learned. |
+| Semantic candidates + verification | `semantic.ts`, `speech.ts` | zod schema, quote tracing with disfluency tolerance, four gates. |
+| Phrase matcher | `extraction.ts` | Matches on a cleaned copy; every span maps back to the original words. |
+| Rule + evidence strength | `rules.ts` | Conditions carry the expert's quote and the version that introduced them. |
+| Counterfactual | `counterfactual.ts` | Picks a cited signal with an uncited sibling; "no" confirms it and adds a guardrail, "yes" broadens it. |
+| Matching and grading | `evaluation.ts` | Guardrails first; unknown data never fires anything. |
+| Decision Boundary Map | `boundary.ts` | Each cell is `matchRule()` on a one-reason hypothetical. |
+| Decision memory | `memory.ts` | Schema-validated artifact plus an interpreter that reads only the JSON. |
+| Benchmark | `benchmark.ts` | 14 seeded cases, ground truth from each fixture's designed cause. |
+| ElevenLabs server calls | `src/lib/voice/elevenlabs-server.ts`, `src/lib/reasoning/provider.ts` | Key stays server-side; one retry for transient failures only. |
 
-The browser captures the mic with an AudioWorklet, resamples to 16 kHz mono PCM, and sends `input_audio_chunk` messages (`commit_strategy=vad`, `language_code=en`). Partial transcripts render live; on **Stop**, a final chunk with `commit: true` flushes the rest. The expert can correct the transcript before submitting, and the evidence is then tagged *edited by expert*.
+## ElevenLabs
 
-**The API key never reaches the browser.** The browser only ever sees a single-use token.
+| Capability | API | Used for |
+|---|---|---|
+| Speech to text, streaming | **Scribe v2 Realtime** (`scribe_v2_realtime`) over WebSocket, browser authenticated with a server-minted single-use token | The expert's answers to "why" and to the counterfactual |
+| Text to speech | `POST /v1/text-to-speech/{voice_id}`, `eleven_flash_v2_5` | Asking both questions aloud |
+| Agents, text-only chat mode (optional) | Signed URL from `GET /v1/convai/conversation/get-signed-url`, then the conversation WebSocket (`user_message` in, `agent_response` out) | Semantic candidate extraction from the transcript |
 
-### Enabling live voice
+The live Scribe and TTS path has been run with a real key and a real microphone: the transcript carried *ElevenLabs Scribe v2 Realtime · live* into rule v1, rule v2 and the trainee provenance. The Agents extractor follows the message shapes of the official `@elevenlabs/client` SDK and is covered by protocol tests against a simulated socket; it has **not** yet been run against the live API (see Limitations).
 
-```bash
-cp .env.example .env.local
-# set ELEVENLABS_API_KEY=... (needs Speech to Text and Text to Speech access)
-npm run dev
-```
+**What is sent where.** Scribe receives the microphone audio. TTS receives the two question strings. The Agents extractor (only if configured) receives the transcript, the question, the service name, deploy versions, the runbook step and the two actions; it does not receive telemetry values. Nothing is stored server-side and transcripts are not logged. The provider sits behind a one-method interface (`SemanticReasoningProvider`) so an organisation can substitute a privately hosted model.
 
-Header shows **Voice: ElevenLabs configured**. `GET /api/voice/status` reports `configured: true` (it never echoes the key). The mic needs a secure context: `localhost` or HTTPS. Optional: `ELEVENLABS_VOICE_ID`, `ELEVENLABS_TTS_MODEL`.
+## Decision Boundary Map
 
-## Fallback behaviour
+Columns are the reasons the expert gave (rule conditions). Rows ask the rule engine what it recommends on the expert's own incident when that one reason **holds**, **stops being true**, or **cannot be measured**. Every cell is computed by running the real matcher on that hypothetical, not drawn by hand. After the counterfactual, the error-spike cell changes from *Rule is silent* to *Hold and investigate* and is marked *Moved in v2*. In the transfer step the trainee's incident is placed on the same axes, the deciding column is outlined, and a result line says where it landed and why. Selecting a column shows the expert's quote, the telemetry and the counterfactual behind it.
 
-Without a key, the app is fully demoable and says so:
+## Benchmark (seeded)
 
-- Header shows **Voice: fallback mode**. The **Answer by voice** button is disabled with the reason shown.
-- Answers can be typed, or filled from the **scripted answer**. Scripted text is tagged *Scripted demo answer · not live* everywhere it appears, including rule evidence and trainee provenance.
-- Questions show *Voice output off · text only*.
+`src/domain/benchmark.ts` holds 14 incidents the expert never saw: clean matches, a CPU-saturating bad deploy, a noisy baseline, a timing mismatch, a late-triggering bad deploy, an upstream outage, latency-only with and without a deploy, a database incident, a traffic surge, missing per-version data, a 100% rollout, and an ordinary runbook case. Each case's correct response is written from its designed root cause, independently of any policy.
 
-With a key that fails (invalid, quota, network, timeout), errors come back from the server with ElevenLabs' reason (e.g. *"ElevenLabs token request failed (401): Invalid API key"*) and are shown where they happen. Typing and scripted answers stay available. Nothing is presented as live unless it came from Scribe.
+The evaluator compares **runbook only** with **runbook + decision memory**, and memory is loaded from the serialized JSON artifact. With the scripted expert answers the harness currently produces:
 
-Incident telemetry is seeded fixture data, labelled *Seeded demo incident · not live telemetry*.
+| Policy | Correct | Abstained | Incorrect |
+|---|---|---|---|
+| Runbook only | 5 / 14 | 0 | 9 |
+| + memory v1 (before the counterfactual) | 10 / 14 | 1 | 3 |
+| + memory v2 (after the counterfactual) | 11 / 14 | 1 | 2 |
 
----
+The counterfactual fixes BM-08 (latency up, errors flat, right after a deploy). The two remaining misses are honest: BM-06 is a bad deploy that fires 30 minutes later, outside the expert's stated timing, and BM-07 is an upstream outage where the right move is to investigate and the rule correctly stands down but the runbook's restart is still wrong. These numbers are computed in the app and pinned by a test; a different expert answer gives different numbers. They are fixtures, not production performance.
 
-## Running
+## Decision memory
+
+`compileDecisionMemory()` turns the rule into `secondshift.decision-memory/v1`: conditions (with the expert's quote and the version that introduced or tested them), guardrails in precedence order, evidence requirements, an explicit missing-evidence policy (abstain), provenance, revision history, evidence strength and how each signal is measured. `executeDecisionMemory()` applies it from the JSON alone; a test shows it reproduces the rule engine on all 19 seeded incidents. `renderAgentContext()` turns the same file into plain text that could be given to an agent as context or used as a policy check. No autonomous agent runs in this app.
+
+## Fallback and honesty
+
+- **No `ELEVENLABS_API_KEY`:** the app is fully demoable. Answers can be typed or taken from a scripted answer. Scripted text is tagged *Scripted demo answer · not live* wherever it appears, including rule evidence and trainee provenance.
+- **No `ELEVENLABS_REASONING_AGENT_ID`:** claims come from the phrase matcher, and the UI says so.
+- **A live call fails:** the reason from ElevenLabs is shown where it happened and the typed or scripted path stays available. A semantic failure falls back to the phrase matcher with the reason shown.
+- Incident telemetry is seeded and labelled *Seeded demo incident · not live telemetry*.
+- Evidence strength is a sum of visible factors, capped at 0.85 because it comes from one incident. It is labelled as a heuristic, not a probability.
+
+## Setup
 
 ```bash
 npm install
-npm run dev        # http://localhost:3000
-npm test           # vitest: domain logic + voice routes + PCM encoding
-npm run lint
-npm run build && npm start
+cp .env.example .env.local          # optional: add keys for live voice
+npm run dev                         # http://localhost:3000  (Story view)
+                                    # http://localhost:3000/?view=analyst
 ```
 
-The app needs Node 20.9+. The test runner (Vitest 5) needs Node 22.12+ or 24. Developed on Node 24.
+Optional semantic extraction through ElevenLabs Agents:
 
-## Tests
+```bash
+npm run setup:reasoning-agent       # creates a text-only agent, prints its id
+# add ELEVENLABS_REASONING_AGENT_ID=<id> to .env.local and restart
+```
 
-58 tests in `tests/`:
+| Variable | Required | Purpose |
+|---|---|---|
+| `ELEVENLABS_API_KEY` | for live voice | Scribe token minting and TTS, server-side only |
+| `ELEVENLABS_VOICE_ID`, `ELEVENLABS_TTS_MODEL` | no | TTS overrides |
+| `ELEVENLABS_REASONING_AGENT_ID` | for semantic extraction | Agent created by the setup script |
+| `ELEVENLABS_REASONING_LLM` | no | LLM for the setup script (default `gemini-2.5-flash`) |
+| `SECONDSHIFT_SEMANTIC=off` | no | Force the phrase matcher even when an agent is configured |
 
-- **signals**: derivation for every seeded incident, deploy timing window, unknown when per-version data is missing or only one version runs.
-- **expert flow**: runbook prediction, no-divergence silence, ignored-signal naming, grounded extraction (incl. spoken paraphrases), negation, contradicted claims, no rule from vague answers, rule v1 shape and confidence.
-- **counterfactual**: picks error-spike vs latency, stance reading, alternative action, "no" adds a guardrail, "yes" broadens, confidence cap.
-- **evaluation**: all four transfer cases (applies / guardrail / counterfactual guardrail / uncertain), provenance points back to INC-2041, unknown data never fires a guardrail.
-- **session**: the UI's state transitions, retry, unclear stance, stance correction re-applies from v1.
-- **voice routes**: 503 without a key, token minted server-side and key never returned, upstream 401 and timeout surface as 502 with a reason, TTS returns audio, input validation.
-- **PCM**: 16-bit little-endian encoding, resampling 48 kHz and 44.1 kHz to 16 kHz with no drift.
+The microphone needs a secure context: `localhost` or HTTPS. Node 20.9+ runs the app; the test runner needs Node 22.12+.
+
+```bash
+npm test          # 113 tests: domain, semantic verification, boundary, memory, benchmark, routes, retries
+npm run lint
+npm run build
+```
+
+## Demo
+
+Story view walks through the six chapters in order: Before, Surprise, Why, Boundary, Transfer, Memory. The exact script is in [`docs/DEMO.md`](docs/DEMO.md). The judging evidence, with file references, is in [`docs/JUDGING.md`](docs/JUDGING.md).
+
+## What is live and what is seeded
+
+| Live (with keys) | Seeded |
+|---|---|
+| Microphone capture, Scribe v2 Realtime transcription, TTS questions | Incident telemetry (5 scenario incidents, 14 benchmark incidents) |
+| Semantic extraction through ElevenLabs Agents, if configured | Scripted fallback answers (always labelled) |
+| All verification, rule learning, grading, boundary map, benchmark and memory are computed live from whatever the expert said | Benchmark ground-truth labels |
 
 ## Limitations
 
-- **Live voice was not exercised with a real key during development** (none was available). The request shapes were checked against the live endpoints (they return the documented `auth_error` / `401 Invalid API key` for bad credentials), and the browser pipeline was tested end to end with a simulated socket. First real-key run should be checked before presenting.
-- Extraction uses a closed signal vocabulary with phrase patterns. It handles common phrasings and paraphrases but will miss reasons outside the vocabulary; it fails safe (no rule, explicit message) rather than guessing.
-- One expert, one incident, one rule. No persistence: a page refresh starts over.
-- Telemetry is seeded. There is no integration with real monitoring.
+- The ElevenLabs Agents extractor has not been exercised against the live API. Its message shapes come from the official SDK source and are tested against a simulated socket. If it fails, the phrase matcher takes over and the UI shows why.
+- The phrase matcher covers a closed vocabulary of 7 signals. It fails safe (no rule, an explicit message) on reasons outside it.
+- One expert, one incident, one rule, one counterfactual. Evidence strength is capped accordingly.
+- No persistence: a refresh starts over. No real monitoring integration.
+- The benchmark is 14 hand-built fixtures that probe specific boundaries. It shows the mechanism works and where it fails; it says nothing about production accuracy.
 - The runbook is a fixed five-step list.
 
-## Future vision
+## Where this goes next (six months)
 
-- Pull live signals from the incident tooling teams already use, and trigger the "why" prompt from real actions (a rollback command, a feature-flag flip).
-- Accumulate rules across many incidents and experts: confirmations raise confidence past the single-incident cap, contradictions surface where experts disagree.
-- Let the trainee ask SecondShift "why not restart?" by voice during their own incident.
-- Use an LLM to map out-of-vocabulary explanations onto signals, keeping the same grounding check so nothing ungrounded is learned.
-- Same loop beyond SRE: any domain with a playbook and experts who know when to ignore it.
+1. Trigger on real deviations: a rollback command, a feature-flag flip, a ticket closed against the runbook.
+2. Accumulate decision memory across incidents and experts. Confirming cases raise evidence strength past the single-incident cap; conflicting experts surface as an explicit disagreement to resolve, never an average.
+3. Choose counterfactuals by expected information gain across many rules, not one pivot.
+4. Serve decision memory to the systems that act: a policy check in front of an automated remediation, or context for an operations agent, with the same provenance.
+5. Expand from SRE to other expert operations with playbooks, exceptions and digital evidence: security operations, fraud review, claims, industrial troubleshooting.
+
+The long-term asset is a dataset most organisations do not have: not what happened, but what would have changed the decision.

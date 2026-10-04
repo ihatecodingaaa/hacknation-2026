@@ -221,7 +221,9 @@ export function MemoryPanel({ json, memory, large = false }: { json: string; mem
     const a = document.createElement("a");
     a.href = url;
     a.download = `${memory.ruleId.toLowerCase()}-v${memory.version}.decision-memory.json`;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
     URL.revokeObjectURL(url);
   }
 

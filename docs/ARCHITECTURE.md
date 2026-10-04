@@ -1,65 +1,53 @@
-﻿# Architecture
+# Architecture
 
-## Keep It Simple
+One Next.js app (App Router, TypeScript). No database, no queue, no agent framework. Seeded typed data for incidents.
 
-One Next.js application.
+## Layers
 
-No database unless absolutely necessary.
+```
+src/domain/            pure TypeScript, no React, unit tested
+  signals.ts           telemetry → tri-state signals (present / absent / unknown)
+  playbook.ts          runbook → expected action
+  divergence.ts        expected vs actual; the "why" question
+  speech.ts            disfluency-tolerant normalization with offset maps; quote tracing
+  extraction.ts        phrase matcher (fallback and cross-check)
+  semantic.ts          schema for model-proposed claims; deterministic verification
+  rules.ts             rule v1, derived guardrails, evidence strength
+  counterfactual.ts    choose the boundary to probe; read the answer; rule v2
+  evaluation.ts        match a rule (guardrails first), grade a trainee, provenance
+  boundary.ts          Decision Boundary Map data; place an incident on it
+  memory.ts            decision memory artifact: compile, validate, execute, render
+  benchmark.ts         14 seeded cases, policies, grading
+  session.ts           the expert flow as pure state transitions
+  scenarios.ts         seeded incidents and scripted fallback answers
 
-Use local typed demo data for the hackathon.
+src/lib/voice/         ElevenLabs: server calls (token, TTS, retry), browser Scribe client, TTS player
+src/lib/reasoning/     semantic provider interface, ElevenLabs Agents provider, prompt builder
+src/app/api/           voice/status, voice/scribe-token, voice/speak, reasoning/extract
+src/components/        Story view (judge/), Analyst console, boundary map, verification, evaluation
+```
 
-## Main Parts
+## Where models are used, and where they are not
 
-1. Incident simulator
-Shows the incident state and available actions.
+| Step | How |
+|---|---|
+| Speech → text | ElevenLabs Scribe v2 Realtime |
+| Asking the questions | ElevenLabs TTS |
+| Proposing claims from messy speech (optional) | ElevenLabs Agents, text-only, behind `SemanticReasoningProvider` |
+| Deciding which claims are true | Code: quote tracing, signal vocabulary, hedging, telemetry |
+| Rules, counterfactual choice, matching, grading, map, benchmark | Code |
 
-2. Expected-action engine
-Produces the expected next action from the current incident.
+## Trust boundary
 
-3. Divergence detector
-Compares expected action with the expert's actual action.
-
-4. Voice capture
-Use ElevenLabs real-time speech-to-text where possible.
-
-5. Rule extractor
-Turns the expert explanation into a structured decision rule.
-
-6. Counterfactual generator
-Asks one targeted question that helps identify where the expert would change their decision.
-
-7. Decision memory
-Stores the rule, guardrail, evidence and confidence.
-
-8. Trainee evaluator
-Checks a trainee's decision against the learned rule.
-
-9. Decision visualization
-Shows how the rule was learned and what evidence supports it.
+The model's output is untrusted input. It is parsed with a strict schema, and every claim must pass four checks before it can become a rule condition. A transcript that tries to instruct the model can at worst produce claims that still have to be in the transcript and agree with the telemetry. The extractor is not given telemetry values.
 
 ## Reliability
 
-Real ElevenLabs integration is preferred.
+- No keys: typed and scripted answers, phrase matcher, all labelled.
+- Transient ElevenLabs failures (network, timeout, 5xx): one retry on the server. 4xx: no retry, reason shown.
+- Semantic extractor failure or timeout (15 s server, 20 s browser): phrase matcher, reason shown.
+- Async extraction results are dropped if the session was reset or the action changed while waiting.
 
-If API credentials are unavailable or the API fails:
-- keep a clearly labelled demo fallback
-- never pretend fallback output is live
+## Data handling
 
-## Technical Principle
-
-Use normal code for:
-- incident state
-- action comparison
-- scoring
-- rule matching
-- trainee evaluation
-
-Use AI for:
-- speech transcription
-- extracting expert reasoning
-- generating counterfactual questions
-- natural-language explanation
-
-## Core Proof
-
-The product must visibly show that a rule learned from one incident can correctly guide a different incident.
+API keys are read on the server only. The browser receives a single-use Scribe token. Transcripts are not stored or logged. What each ElevenLabs API receives is listed in the README.

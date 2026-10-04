@@ -1,55 +1,46 @@
 # Status
 
-Last updated: 2026-10-04
+Last updated: 2026-10-04 (branch `cloud/secondshift-winning-pass`)
 
 ## Current state
 
-The full demo works end to end in fallback mode (no API key): expert divergence → why → grounded rule v1 → counterfactual → rule v2 → trainee transfer on four cases with provenance.
-
-The ElevenLabs integration (Scribe v2 Realtime STT + TTS) is implemented behind server routes. It has **not** been run with a real API key, because none was available.
+The full demo works end to end with or without keys: divergence → why (voice) → verified claims → rule v1 → counterfactual → rule v2 → Decision Boundary Map → trainee transfer on four cases → seeded benchmark → decision memory artifact. Two presentations share one session: **Story view** (default, six chapters for a first-time viewer) and **Analyst view** (`/?view=analyst`, the full console).
 
 ## Works
 
-- App boots (`npm run dev`, `npm run build && npm start`). Single page at `/`.
-- Expert shift on INC-2041: runbook expectation, expert action, divergence with ignored signals, "why" question.
-- No-divergence path: choosing the runbook action asks nothing and learns nothing.
-- Explanation capture: typed, scripted (labelled "not live"), or live voice (needs key).
-- Grounded extraction with highlighted phrases and a claim-vs-telemetry table.
-- Ungrounded/vague answer: no rule, explicit message, retry.
-- Rule v1 with derived guardrails, evidence and confidence factors.
-- Counterfactual question chosen from the rule (error spike vs latency), rationale and hypothetical diff.
-- Stance reading of the answer, manual pick if unclear, "Misread? Flip it" correction.
-- Rule v2 with "boundary tested" condition, counterfactual guardrail, version history, highlighted changes.
-- Trainee transfer: A mismatch (restart vs rollback), B guardrail blocks rollback, C counterfactual guardrail says investigate, D uncertain (missing per-version data).
-- Provenance: verdicts trace back to the expert's quote, INC-2041 telemetry and the counterfactual Q/A, each with a source tag.
-- Fallback mode is clearly labelled everywhere (header, voice button, question audio status, evidence tags).
-- Voice failure handling verified in the browser with an invalid key: TTS failure shows "ElevenLabs TTS failed · text only"; token failure shows "ElevenLabs token request failed (401): Invalid API key"; the real Scribe WebSocket `auth_error` is shown and the UI recovers.
-- Browser mic → PCM → WebSocket pipeline verified with a synthetic mic and a simulated socket: chunks at 16 kHz, live partials, commit on stop, final transcript, "ElevenLabs Scribe · live" tag carried into rule evidence.
-- Layout: three panes from 1024px wide, stacked below that, no horizontal scroll at phone width.
+- Everything listed for the baseline (runbook prediction, divergence, grounded rule, counterfactual, guardrails, four trainee cases with provenance, labelled fallback).
+- **Semantic candidate extraction** through ElevenLabs Agents (text-only chat mode) behind a provider interface, enabled by `ELEVENLABS_REASONING_AGENT_ID`. Output must pass a strict zod schema. Every claim is then verified by code: quote traced to the transcript, observable signal, not hedged or low-confidence, telemetry agrees. Only supported claims are learned. The UI shows rejected candidates and the model's interpretation, labelled as not evidence.
+- **Phrase matcher** kept as fallback and cross-check, now tolerant of fillers, repeats and cut-off words, with spans mapped back to the original transcript.
+- **Decision Boundary Map** computed from the rule; marks the cell the counterfactual moved; places trainee incidents with the deciding condition highlighted.
+- **Seeded benchmark** (14 cases): runbook only 5/14 correct; + memory v1 10/14 (1 abstained, 3 incorrect); + memory v2 11/14 (1 abstained, 2 incorrect). Computed from the serialized artifact, pinned by a test. Numbers come from the scripted expert answers.
+- **Decision memory** artifact (`secondshift.decision-memory/v1`): schema-validated JSON, an interpreter that reads only the JSON, agent-context text, download.
+- **Voice retries:** server retries token and TTS calls once on network errors, timeouts and 5xx; never on 4xx. The browser retries the token fetch once only if the request never reached the server.
+- **Signal fix:** with a single running version, both scope signals are now `unknown` (previously "every version failing" was vacuously present).
+- "Confidence" is now labelled **evidence strength**, a heuristic sum of visible factors, not a probability.
 
-## Not verified / does not work
+## Verified, and how
 
-- Live ElevenLabs STT and TTS with a valid key. Request shapes match the official docs and the live endpoints respond as documented to bad credentials, but a successful real session has not been observed.
-- Mic capture on a real microphone (tested with a synthetic stream only).
-
-## Known defects / limitations
-
-- Extraction is a closed vocabulary of 7 signals with phrase patterns. Reasons outside it are not learned (fails safe with a message).
-- No persistence: refreshing the page resets the session.
-- Telemetry is seeded fixture data (labelled in the UI).
-- In browser automation the first click right after a page navigation was sometimes ignored (focus); not reproduced by hand.
-- `npm audit` reports 5 high advisories in dev-only ESLint tooling (`braces` via `eslint-config-next`). The suggested fix downgrades `eslint-config-next` to 14, so it was left alone.
+- Live ElevenLabs Scribe v2 Realtime + TTS with a real key and microphone: run locally by Lucas after the baseline commit (reported: both answers transcribed, rule v1 and v2 created, provenance carried the live source). One transient `502` on `/api/voice/scribe-token` was seen and succeeded on retry; that is what the new retry handles.
+- Not verifiable from the cloud build environment: `api.elevenlabs.io` is blocked there and no key is available. With a fake key, the proxy's `403` was surfaced in the UI as the token error, was not retried (4xx), and the semantic extractor fell back to the phrase matcher with the reason shown.
+- ElevenLabs Agents extractor: message shapes taken from the official `@elevenlabs/client` and `@elevenlabs/elevenlabs-js` source; tested against a simulated socket (init, user message, ping/pong, ignoring a greeting, timeout, auth failure). **Not yet run against the live API.**
+- Browser runs (Playwright, production build): every Story chapter and both Analyst tabs at 1920×1080 and 1440×900, all four trainee cases, no console errors, no horizontal overflow; mobile 390×844 with no page or pane overflow. A semantic success response was injected with request interception to check how the UI renders it (test only, not shipped).
 
 ## Tests run
 
-- `npm test`: 7 files, 58 tests, all passing (domain logic, session transitions, voice routes, PCM encoding).
+- `npm test`: 11 files, 113 tests, all passing.
 - `npm run lint`: clean.
-- `npm run build`: passes. Routes: `/` (dynamic), `/api/voice/status`, `/api/voice/scribe-token`, `/api/voice/speak`.
-- Manual browser run of every path listed under "Works" against the production build.
-- Scripted browser run under `next dev`: all 12 trainee case/action verdicts as expected, no React warnings or console errors. (This run caught and fixed a duplicate-key bug that stacked stale panes when switching modes.)
+- `npm run build`: passes. Routes: `/`, `/api/voice/status`, `/api/voice/scribe-token`, `/api/voice/speak`, `/api/reasoning/extract`.
+
+## Known problems / limitations
+
+- The Agents extractor needs one local run with a real key before it is relied on in a presentation (see Next task). The demo does not depend on it.
+- Phrase matcher vocabulary is 7 signals; it fails safe outside it.
+- No persistence; refresh resets. Telemetry is seeded.
+- `npm audit` reports 5 high advisories in dev-only ESLint tooling (`braces` via `eslint-config-next`); the suggested fix downgrades `eslint-config-next`, so it was left alone.
+- `AGENTS.md` contains em dashes; it is generated by `next dev` and was left untouched.
 
 ## Next task
 
-1. Put a real `ELEVENLABS_API_KEY` in `.env.local`, run `npm run dev`, and do one full voice run: speak the explanation and the counterfactual answer. Check the transcript, then check the rule evidence shows "ElevenLabs Scribe v2 Realtime · live".
-2. Deploy (e.g. Vercel) with `ELEVENLABS_API_KEY` set as a server environment variable. The mic needs HTTPS.
-3. Rehearse the walkthrough in README.md.
+1. Locally: `npm run setup:reasoning-agent`, put the printed id in `.env.local` as `ELEVENLABS_REASONING_AGENT_ID`, restart, and answer the "why" question by voice. Check the claims footer says *Claims proposed by: ElevenLabs Agents (text-only)*. If it shows a fallback reason instead, the demo still works; remove the variable to silence it.
+2. Rehearse `docs/DEMO.md` twice: once live, once with scripted answers.
+3. Deploy with the keys as server environment variables (the microphone needs HTTPS).
